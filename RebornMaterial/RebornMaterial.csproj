@@ -1,0 +1,46 @@
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+	<PropertyGroup>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<RootNamespace>RebornMaterial</RootNamespace>
+		<AssemblyName>RebornMaterial</AssemblyName>
+		<Version>1.0.0</Version>
+
+		<!-- A library, not a plugin: no plugin zip, and only the Dalamud assemblies it actually uses. -->
+		<Use_DalamudPackager>false</Use_DalamudPackager>
+		<Use_Dalamud_FFXIVClientStructs>false</Use_Dalamud_FFXIVClientStructs>
+		<Use_Dalamud_Newtonsoft_Json>false</Use_Dalamud_Newtonsoft_Json>
+		<Use_Dalamud_Lumina>false</Use_Dalamud_Lumina>
+		<Use_Dalamud_Lumina_Excel>false</Use_Dalamud_Lumina_Excel>
+		<Use_Dalamud_Serilog>false</Use_Dalamud_Serilog>
+		<Use_Dalamud_MSObjectPool>false</Use_Dalamud_MSObjectPool>
+
+		<DebugType>embedded</DebugType>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<NoWarn>$(NoWarn);CS1591</NoWarn>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<IsPackable>true</IsPackable>
+		<PackageId>RebornMaterial</PackageId>
+		<Title>Reborn Material</Title>
+		<Authors>The CombatReborn Team</Authors>
+		<Description>Material Design 3 components for Dalamud ImGui plugins: a seeded colour scheme, cards, buttons, switches, sliders, navigation, dialogs, snackbars and more. Shared by the Reborn plugins.</Description>
+		<PackageTags>dalamud;ffxiv;imgui;material;ui</PackageTags>
+		<PackageProjectUrl>https://github.com/LTS-FFXIV/RebornMaterial</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/LTS-FFXIV/RebornMaterial</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Using Include="System.Numerics" />
+		<Using Include="Dalamud.Interface" />
+		<Using Include="Dalamud.Bindings.ImGui" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="..\README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+</Project>
