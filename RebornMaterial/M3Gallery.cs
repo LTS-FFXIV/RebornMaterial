@@ -21,6 +21,15 @@ public static class M3Gallery
 	private static readonly M3Segment[] _scaleSegments = [new("75%"), new("100%"), new("125%"), new("150%")];
 	private static readonly float[] _scales = [0.75f, 1f, 1.25f, 1.5f];
 
+	private static readonly M3Segment[] _densitySegments =
+	[
+		new("Comfortable", Tooltip: "Material's own spacing, for settings windows."),
+		new("Compact", Tooltip: "Tighter spacing, for small overlays."),
+		new("Tight", Tooltip: "Compact spacing, thin window edges, and tighter card, row and drawer padding."),
+	];
+
+	private static readonly M3Density[] _densities = [M3Density.Comfortable, M3Density.Compact, M3Density.Tight];
+
 	private static readonly M3ButtonStyle[] _buttonStyles =
 		[M3ButtonStyle.Filled, M3ButtonStyle.Tonal, M3ButtonStyle.Outlined, M3ButtonStyle.Text, M3ButtonStyle.Danger];
 
@@ -112,6 +121,7 @@ public static class M3Gallery
 
 	private static int _page;
 	private static int _scaleIndex = DefaultScaleIndex;
+	private static int _densityIndex;
 
 	private static bool _motionOn;
 	private static readonly bool[] _toggles = [false, true, false, true, false];
@@ -119,6 +129,7 @@ public static class M3Gallery
 	private static int _segmentText;
 	private static int _segmentIcon;
 	private static int _segmentWide = 1;
+	private static int _segmentSmall;
 
 	private static bool _switchOn = true;
 	private static bool _switchOff;
@@ -164,13 +175,8 @@ public static class M3Gallery
 		DrawControls();
 
 		using var scale = M3.PushWindowScale(_scales[_scaleIndex]);
-		var previewing = _scaleIndex != DefaultScaleIndex;
-		if (previewing)
-		{
-			ImGui.PushFont(M3.Body);
-		}
-
-		using var font = new M3.FontScope(previewing);
+		// Restyles the pages as a window of this scale and density would be, body font included.
+		using var theme = M3Style.Push(_densities[_densityIndex]);
 
 		var picked = M3Navigation.Tabs("##gallery_pages", _pages, _page, width: RowWidth);
 		if (picked >= 0)
@@ -223,6 +229,24 @@ public static class M3Gallery
 		}
 
 		M3SettingRow.End(scaleRow);
+
+		var densityWidth = M3Widgets.SegmentedWidth(_densitySegments);
+		var densityRow = M3SettingRow.Begin("Preview density", "Restyles the pages below as M3Style.Push does for a window of that density.",
+			new Vector2(densityWidth, M3Widgets.SegmentedHeight));
+		var density = M3Widgets.SegmentedButtons("##gallery_density", _densitySegments, _densityIndex, densityWidth);
+		if (density >= 0)
+		{
+			_densityIndex = density;
+		}
+
+		M3SettingRow.End(densityRow);
+
+		var padding = M3.Settings.UiPaddingScale * 100f;
+		if (M3Widgets.RowDragFloat("Padding###gallery_padding", ref padding, 25f, 200f, "%.0f%%",
+			"The saved padding setting. Scales the space around and between things; controls and text keep their size."))
+		{
+			M3.Settings.UiPaddingScale = MathF.Round(padding) / 100f;
+		}
 
 		var swatch = 28f * scale;
 		var resetWidth = M3Widgets.ButtonWidth(FontAwesomeIcon.None, "Reset");
@@ -671,6 +695,13 @@ public static class M3Gallery
 		{
 			_segmentWide = picked;
 		}
+
+		Caption("A smaller label font, for a narrow window. The height and icons stay the same:");
+		picked = M3Widgets.SegmentedButtons("##segmented_small", _iconSegments, _segmentSmall, labelFont: M3.LabelSmall);
+		if (picked >= 0)
+		{
+			_segmentSmall = picked;
+		}
 	}
 
 	#endregion
@@ -821,7 +852,8 @@ public static class M3Gallery
 		var width = MathF.Min(RowWidth, 380f * M3.Scale);
 
 		Heading("Search field");
-		_ = M3Widgets.SearchField("##gallery_search", "Search settings", ref _search, width);
+		_ = M3Widgets.SearchField("##gallery_search", "Search settings", ref _search, width, busy: !string.IsNullOrEmpty(_search));
+		Caption("The icon turns into a spinner while results are showing, here while anything is typed.");
 
 		Heading("Text fields", isNew: true);
 		_ = M3Widgets.TextField("##gallery_name", "Name", ref _name, width);
@@ -889,7 +921,10 @@ public static class M3Gallery
 		M3Widgets.CircularProgress(48f * scale);
 		flow.Next(24f * scale);
 		M3Widgets.CircularProgress(24f * scale, null, 3f);
-		Caption("Determinate ones follow the slider above.");
+		flow.Next(24f * scale);
+		ImGui.Dummy(new Vector2(24f * scale));
+		M3Widgets.Spinner(ImGui.GetWindowDrawList(), ImGui.GetItemRectMin() + new Vector2(12f * scale), 10.5f * scale, M3.Scheme.Tertiary, 3f * scale);
+		Caption("Determinate ones follow the slider above. The last is a bare Spinner, which draws anywhere in any colour.");
 
 		Heading("Badges", isNew: true);
 		flow = new Flow(M3.Space2);
@@ -1007,6 +1042,7 @@ public static class M3Gallery
 		var s = M3.Scheme;
 
 		Heading("Cards");
+		Caption("Card padding and the gap under each card follow the padding setting, and pull in at Tight density.");
 		foreach (var style in Enum.GetValues<M3CardStyle>())
 		{
 			using var card = M3Card.Begin($"gallery_card_{style}", $"{style} card", FontAwesomeIcon.Square, style: style,

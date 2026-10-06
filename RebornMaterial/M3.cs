@@ -17,7 +17,9 @@ public static class M3
 
 	private static float _elementScale = 1f;
 
-	/// <summary>Where the accent color and the text and element sizes are read from.</summary>
+	private static float _paddingScale = 1f;
+
+	/// <summary>Where the accent color and the text, element and padding sizes are read from.</summary>
 	public static IM3Settings Settings { get; set; } = new M3Settings();
 
 	/// <summary>Element size at a setting of 100%. Below 1 makes every component more compact than the Material spec.</summary>
@@ -38,7 +40,7 @@ public static class M3
 			Settings = settings;
 		}
 
-		_elementScale = ElementBaseline * Math.Clamp(Settings.UiElementScale, 0.5f, 2.5f);
+		ReadSizes();
 	}
 
 	/// <summary>Call from the plugin's Dispose. Releases the fonts and clears every cached animation and layout.</summary>
@@ -54,14 +56,23 @@ public static class M3
 
 	public static float Scale => ImGuiHelpers.GlobalScale * _elementScale * _windowScale;
 
+	/// <summary>Scale for padding and spacing. Follows the padding setting on top of <see cref="Scale"/>, so the space can shrink or grow without the controls changing size.</summary>
+	public static float PaddingScale => Scale * _paddingScale;
+
 	/// <summary>Call once per frame, before any window draws.</summary>
-	// Keeps the old size while a control is held, so the size slider doesn't resize under the mouse.
+	// Keeps the old sizes while a control is held, so the size sliders don't resize under the mouse.
 	public static void BeginFrame()
 	{
 		if (!ImGui.IsAnyItemActive())
 		{
-			_elementScale = ElementBaseline * Math.Clamp(Settings.UiElementScale, 0.5f, 2.5f);
+			ReadSizes();
 		}
+	}
+
+	private static void ReadSizes()
+	{
+		_elementScale = ElementBaseline * Math.Clamp(Settings.UiElementScale, 0.5f, 2.5f);
+		_paddingScale = Math.Clamp(Settings.UiPaddingScale, 0f, 3f);
 	}
 
 	// Dalamud fonts already include the global scale, so it's left out here.
@@ -100,9 +111,9 @@ public static class M3
 	public static float ShapeExtraLarge => 28f * Scale;
 	public static float ShapeFull => 999f;
 
-	public static float Space1 => 4f * Scale;
-	public static float Space2 => 8f * Scale;
-	public static float Space3 => 12f * Scale;
+	public static float Space1 => 4f * PaddingScale;
+	public static float Space2 => 8f * PaddingScale;
+	public static float Space3 => 12f * PaddingScale;
 
 	public const float StateHover = 0.08f;
 	public const float StatePressed = 0.10f;

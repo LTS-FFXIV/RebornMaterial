@@ -9,7 +9,7 @@ The whole colour scheme is generated from one accent colour, and every metric fo
 | Type | What it draws |
 | --- | --- |
 | `M3` | Scheme, shapes, spacing, fonts, scale, and the colour helpers (`Alpha`, `StateLayer`, `ContentOn`, `Severity`) |
-| `M3Style` | Pushes the scheme onto ImGui's own style, for a whole window |
+| `M3Style` | Pushes the scheme onto ImGui's own style for a whole window, at a Comfortable, Compact or Tight density |
 | `M3Widgets` | Buttons, icon buttons and toggles, switches, checkboxes, radios, segmented buttons, chips, pills, badges, sliders, progress bars and spinners, text and search fields, combos, menus, banners, empty states, colour swatches, dividers, and the window title-bar actions |
 | `M3Card`, `M3ExpandableCard` | Filled, outlined and elevated cards, which can also collapse |
 | `M3SettingRow`, `M3SubGroup` | Label and description on the left, control on the right. Wraps to two lines when narrow |
@@ -70,10 +70,13 @@ public class Configuration : IPluginConfiguration, IM3Settings
     public Vector4 UiAccentColor { get; set; } = M3.DefaultSeed;
     public float UiTextScale { get; set; } = 1f;
     public float UiElementScale { get; set; } = 1f;
+
+    // Optional. Scales the space around and between things; controls and text keep their size.
+    public float UiPaddingScale { get; set; } = 1f;
 }
 ```
 
-If the settings live somewhere the library can't reference, write a small adapter that forwards to them. Pass nothing to use a plain `M3Settings`, which you can change through `M3.Settings`.
+`UiPaddingScale` has a default of 1, so settings without it still compile. If the settings live somewhere the library can't reference, write a small adapter that forwards to them. Pass nothing to use a plain `M3Settings`, which you can change through `M3.Settings`.
 
 ### Tooltips
 
@@ -126,6 +129,18 @@ public override void Draw()
 ```
 
 To scale everything in one window, push `M3.PushWindowScale(scale)` before `M3Style.Push` and dispose it after.
+
+### Density
+
+`M3Style.Push` takes an `M3Density`:
+
+| Density | Use it for |
+| --- | --- |
+| `Comfortable` | The default. Material's own spacing, for settings windows |
+| `Compact` | Tighter item spacing and smaller window corners, for small overlays |
+| `Tight` | Compact spacing and thin window edges. Cards, setting rows, expandable card headers and the navigation drawer also use less padding |
+
+Window edges, item spacing and component padding follow the padding setting through `M3.PaddingScale`. Frame padding sets the height of inputs, so it follows the element size instead. In a custom layout, use `M3.Space1` to `Space3` for gaps, or `M3Style.Spacing(regular, tight)` for padding that should also tighten inside a `Tight` window.
 
 `M3Gallery.Draw()` shows every component, with controls for the preview scale and accent colour. Put it in a debug tab to try things out.
 

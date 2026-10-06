@@ -11,6 +11,13 @@ public interface IM3Settings
 
 	/// <summary>Element size multiplier, clamped to 0.5 - 2.5.</summary>
 	float UiElementScale { get; set; }
+
+	/// <summary>Padding and spacing multiplier, on top of the element size, clamped to 0 - 3. Settings that don't store it stay at 1.</summary>
+	float UiPaddingScale
+	{
+		get => 1f;
+		set { }
+	}
 }
 
 public sealed class M3Settings : IM3Settings
@@ -20,4 +27,6 @@ public sealed class M3Settings : IM3Settings
 	public float UiTextScale { get; set; } = 1f;
 
 	public float UiElementScale { get; set; } = 1f;
+
+	public float UiPaddingScale { get; set; } = 1f;
 }
