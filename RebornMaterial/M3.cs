@@ -50,6 +50,10 @@ public static class M3
 		M3Snackbar.Clear();
 		M3Motion.Reset();
 		M3CardHost.Reset();
+		M3Widgets.Reset();
+		M3Menu.Reset();
+		M3Tree.Reset();
+		M3Navigation.Reset();
 		M3Tooltip.Handler = null;
 		_pluginInterface = null;
 	}
@@ -175,6 +179,29 @@ public static class M3
 		return ImGui.GetColorU32(color with { W = alpha });
 	}
 
+	// Turns a colour's hue up to 15 degrees towards the accent, so a fixed colour sits better beside the scheme.
+	public static Vector4 Harmonize(Vector4 color)
+	{
+		M3ColorMath.ToLch(color, out var lightness, out var chroma, out var hue);
+		M3ColorMath.ToLch(Scheme.Primary, out _, out _, out var target);
+
+		var difference = M3ColorMath.WrapHue(target - hue + 180f) - 180f;
+		var turn = MathF.Min(MathF.Abs(difference) * 0.5f, 15f) * MathF.Sign(difference);
+		return M3ColorMath.FromLch(lightness, chroma, M3ColorMath.WrapHue(hue + turn)) with { W = color.W };
+	}
+
+	public static M3ColorRoles CustomColor(Vector4 color, bool harmonize = true)
+	{
+		if (harmonize)
+		{
+			color = Harmonize(color);
+		}
+
+		M3ColorMath.ToLch(color, out _, out var chroma, out var hue);
+		var palette = new TonalPalette(hue, MathF.Max(chroma, 16f));
+		return new M3ColorRoles(palette[80], palette[20], palette[30], palette[90]);
+	}
+
 	public static Vector4 Severity(M3Severity severity)
 	{
 		var scheme = Scheme;
@@ -224,6 +251,8 @@ public static class M3
 		}
 	}
 }
+
+public readonly record struct M3ColorRoles(Vector4 Color, Vector4 OnColor, Vector4 Container, Vector4 OnContainer);
 
 public enum M3Severity
 {

@@ -231,6 +231,7 @@ public static class M3SettingRow
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();
 		var drawList = ImGui.GetWindowDrawList();
+		M3Draw.FocusRing(min, max, M3.ShapeSmall);
 
 		if (hovered || held)
 		{

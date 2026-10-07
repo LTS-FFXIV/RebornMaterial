@@ -253,6 +253,7 @@ public static class M3ExpandableCard
 		}
 
 		DrawChevron(drawList, chevronCenter, progress, M3.Alpha(s.OnSurfaceVariant, hovered ? 1f : 0.8f));
+		M3Draw.FocusRing(min, new Vector2(min.X + width, min.Y + headerHeight), M3.ShapeMedium);
 
 		// Follow the open state, not the animation, or the divider gets left under a closed section.
 		var indent = 0f;

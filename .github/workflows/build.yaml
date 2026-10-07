@@ -1,0 +1,43 @@
+name: Build
+on:
+  pull_request:
+    branches:
+      - main
+jobs:
+  Build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Download Dalamud Latest
+        run: |
+          Invoke-WebRequest -Uri https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile latest.zip
+          Expand-Archive -Force latest.zip -DestinationPath "$env:AppData\XIVLauncher\addon\Hooks\dev"
+
+      - name: Get Environment Variables
+        run: |
+          $base = dotnet msbuild RebornMaterial/RebornMaterial.csproj -getProperty:Version
+          $version = "$base-pr.${{ github.event.number }}.${{ github.run_number }}"
+
+          "version=$version" | Out-File -Append -FilePath $Env:GITHUB_ENV
+
+      - name: Restore NuGet Packages
+        run: dotnet restore RebornMaterial/RebornMaterial.csproj
+
+      - name: Build Library
+        run: dotnet build --no-restore -c Release RebornMaterial/RebornMaterial.csproj -p:Version=${{ env.version }}
+
+      - name: Pack Library
+        run: dotnet pack --no-build -c Release RebornMaterial/RebornMaterial.csproj -p:Version=${{ env.version }} --output .\artifacts
+
+      - name: Upload Package
+        uses: actions/upload-artifact@v7
+        with:
+          name: RebornMaterial.${{ env.version }}
+          path: ./artifacts/*.nupkg

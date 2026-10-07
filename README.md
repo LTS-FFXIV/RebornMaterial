@@ -8,20 +8,26 @@ The whole colour scheme is generated from one accent colour, and every metric fo
 
 | Type | What it draws |
 | --- | --- |
-| `M3` | Scheme, shapes, spacing, fonts, scale, and the colour helpers (`Alpha`, `StateLayer`, `ContentOn`, `Severity`) |
+| `M3` | Scheme, shapes, spacing, fonts, scale, and the colour helpers (`Alpha`, `StateLayer`, `ContentOn`, `Severity`, `Harmonize`, `CustomColor`) |
 | `M3Style` | Pushes the scheme onto ImGui's own style for a whole window, at a Comfortable, Compact or Tight density |
-| `M3Widgets` | Buttons, icon buttons and toggles, switches, checkboxes, radios, segmented buttons, chips, pills, badges, sliders, progress bars and spinners, text and search fields, combos, menus, banners, empty states, colour swatches, dividers, and the window title-bar actions |
+| `M3Widgets` | Buttons (with accent colours, game icons, and hold to confirm), icon buttons and toggles, switches, checkboxes (bare, labelled, or mixed), radios, segmented buttons, chips, pills, badges, sliders (including logarithmic), progress bars and spinners, text, search and number fields, hotkey fields, combos (with search and enums), menu items, help markers, reorder lists, banners, empty states, colour swatches, dividers, and the window title-bar actions |
+| `M3Widgets.Row*` | A label and description with one control: switch, slider, number, combo, colour, text or hotkey |
 | `M3Card`, `M3ExpandableCard` | Filled, outlined and elevated cards, which can also collapse |
 | `M3SettingRow`, `M3SubGroup` | Label and description on the left, control on the right. Wraps to two lines when narrow |
-| `M3Navigation` | Navigation drawer and rail, and primary and secondary tabs |
+| `M3Navigation` | Navigation drawer and rail with section headings, and primary and secondary tabs that scroll when they don't fit |
+| `M3Menu` | Popup and right-click menus, with submenus |
+| `M3Tree` | Rows that open and close, for folders, groups and nested settings |
+| `M3Flow` | Lays items out in a row that wraps onto new lines |
+| `M3Text` | Text in the scheme's roles: muted, accent, headings, labels and severities |
+| `M3Chart` | Bar and line charts with a legend and hover readout, and the same data as a table |
 | `M3Dialog` | Modal dialogs with actions |
 | `M3Snackbar` | Queued toast messages with an optional action |
 | `M3Badge` | A small tag on a line of text |
 | `M3TextField` | Filled single-line text field |
 | `M3ActionIcon` | Action and game icons with a cooldown sweep and charge pips |
 | `M3HeroHeader` | Window header with an image, or a gradient with animated stars |
-| `M3WindowFold` | Minimises a window down to its title-bar actions, with animation |
-| `M3Draw`, `M3Motion` | Drawing primitives (arcs, shadows, gradients, icons) and per-widget easing |
+| `M3WindowFold` | Minimises a window down to its title-bar actions, with animation, from a button or from code |
+| `M3Draw`, `M3Motion` | Drawing primitives (arcs, shadows, gradients, icons, focus rings) and per-widget easing |
 | `M3Gallery` | A showcase of everything above, for a debug tab |
 
 ## Setup
@@ -143,6 +149,79 @@ To scale everything in one window, push `M3.PushWindowScale(scale)` before `M3St
 Window edges, item spacing and component padding follow the padding setting through `M3.PaddingScale`. Frame padding sets the height of inputs, so it follows the element size instead. In a custom layout, use `M3.Space1` to `Space3` for gaps, or `M3Style.Spacing(regular, tight)` for padding that should also tighten inside a `Tight` window.
 
 `M3Gallery.Draw()` shows every component, with controls for the preview scale and accent colour. Put it in a debug tab to try things out.
+
+### Disabled controls
+
+Most controls take `enabled`. A disabled control still shows its tooltip, so the tooltip can say why it's off:
+
+```csharp
+M3Widgets.Button("##start", "Start", M3ButtonStyle.Filled, enabled: listReady, tooltip: listReady ? null : "Add an item to the list first.");
+```
+
+Every row helper also takes `enabled`, and dims its label along with the control.
+
+### Setting rows
+
+Each `Row*` helper draws a label, an optional description, and one control. Together they cover the usual setting types, which suits a settings page built by reflection:
+
+| Value | Helper |
+| --- | --- |
+| `bool` | `RowSwitch` |
+| `float`, `int` in a range | `RowDragFloat`, `RowDragInt` (pass `logarithmic: true` for wide ranges) |
+| `float`, `int` typed in | `RowNumber`, with an optional step and unit |
+| An enum | `RowCombo<T>`, or `RowCombo(label, type, ref value)` when the type is only known at run time |
+| A list of names | `RowCombo(label, ref index, items)` |
+| A colour | `RowColor`, with an optional default to reset to |
+| Text | `RowText` |
+| A hotkey | `RowHotkey`, which stores an `M3Hotkey` of a `VirtualKey` and modifiers |
+
+A label like `"Volume###volume"` shows "Volume" and uses "volume" as the ID.
+
+### Menus and trees
+
+`M3Menu.Item` closes every open menu when it's picked, submenus included:
+
+```csharp
+using (var menu = M3Menu.BeginContext("##list_menu"))
+{
+    if (menu.IsOpen)
+    {
+        if (M3Menu.Item("##rename", "Rename", FontAwesomeIcon.Pen)) { /* ... */ }
+
+        using (var sub = M3Menu.BeginSub("##move", "Move to", FontAwesomeIcon.FolderOpen))
+        {
+            if (sub.IsOpen && M3Menu.Item("##daily", "Daily")) { /* ... */ }
+        }
+    }
+}
+```
+
+`M3Tree` remembers which nodes are open. The row is the last item until the first child, so a right-click menu can follow it:
+
+```csharp
+using (var folder = M3Tree.Node("folder", "Daily lists", icon: FontAwesomeIcon.Folder))
+{
+    if (folder.Open)
+    {
+        using var list = M3Tree.Node("list", "Ores", selected: isSelected, leaf: true);
+        if (list.Clicked) { /* select it */ }
+    }
+}
+```
+
+### Charts
+
+```csharp
+// A width of 0 fills the space available.
+M3Chart.Bars("##sizes", buckets, [new("Average", average), new("Large", large)], new Vector2(0f, 220f * M3.Scale), yTitle: "Catches");
+M3Chart.Table("##sizes_table", buckets, series);
+```
+
+Series take the colours in `M3Chart.Palette` in order. There are eight, and they never repeat, so fold any extra series into an "Other" series. The palette was checked for colour-blind separation and contrast against the scheme's surfaces.
+
+### Keyboard and gamepad
+
+Controls show a focus ring while the keyboard or a gamepad has focus, and never for the mouse. Tree nodes open with the right arrow and close with the left, and a reorder list moves the focused row with Ctrl and up or down.
 
 ### Action icons
 

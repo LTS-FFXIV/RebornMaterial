@@ -1,3 +1,4 @@
+using Dalamud.Interface.Textures.TextureWraps;
 using Dalamud.Interface.Utility.Raii;
 
 namespace RebornMaterial;
@@ -131,6 +132,25 @@ public static class M3Draw
 		var size = ImGui.CalcTextSize(text) * scale;
 		var position = min + (((max - min) - size) * 0.5f);
 		drawList.AddText(UiBuilder.IconFont, ImGui.GetFontSize() * scale, position, M3.U32(color), text);
+	}
+
+	// Outlines the last item while the keyboard or a gamepad has it focused. Mouse users never see it.
+	public static void FocusRing(Vector2 min, Vector2 max, float rounding)
+	{
+		if (!ImGui.IsItemFocused() || !ImGui.GetIO().NavVisible)
+		{
+			return;
+		}
+
+		var scale = M3.Scale;
+		var gap = 2f * scale;
+		ImGui.GetWindowDrawList().AddRect(min - new Vector2(gap), max + new Vector2(gap), M3.U32(M3.Scheme.Secondary),
+			rounding + gap, ImDrawFlags.None, 2.5f * scale);
+	}
+
+	public static bool Texture(ImDrawListPtr drawList, IDalamudTextureWrap? texture, Vector2 min, float size, float alpha = 1f)
+	{
+		return M3ActionIcon.Image(drawList, texture, min, min + new Vector2(size, size), M3.ShapeExtraSmall, alpha);
 	}
 
 	public static float WrappedText(string text, Vector2 position, float wrapWidth, Vector4 color)

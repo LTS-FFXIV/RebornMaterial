@@ -16,6 +16,7 @@ public static class M3Gallery
 		new("Feedback", FontAwesomeIcon.Bell),
 		new("Layout", FontAwesomeIcon.ThLarge),
 		new("Navigation", FontAwesomeIcon.Compass),
+		new("Charts", FontAwesomeIcon.ChartBar),
 	];
 
 	private static readonly M3Segment[] _scaleSegments = [new("75%"), new("100%"), new("125%"), new("150%")];
@@ -170,6 +171,50 @@ public static class M3Gallery
 	private static int _tabText;
 	private static int _tabSecondary;
 
+	private static readonly bool[] _labeledChecks = [true, false, true, false, true, false, false, true];
+	private static readonly string[] _labeledCheckNames =
+		["Forbid actions", "Forbid movement", "Idle while mounted", "Follow in combat", "Follow target", "Manual targeting", "Skip obstacle maps", "Follow out of combat"];
+	private static readonly bool[] _mixedChildren = [true, false, true];
+	private static readonly string[] _mixedNames = ["Miner", "Botanist", "Fisher"];
+	private static float _logSlider = 2f;
+	private static readonly Vector4 _rowColorDefault = new(0.85f, 0.45f, 0.2f, 1f);
+	private static Vector4 _rowColor = new(0.85f, 0.45f, 0.2f, 1f);
+	private static float _distance = 2.6f;
+	private static int _delay = 500;
+	private static string[]? _bigComboItems;
+	private static int _bigComboIndex = 41;
+	private static M3Severity _enumChoice = M3Severity.Warning;
+	private static M3Density _rowEnum = M3Density.Compact;
+	private static int _ruleIndex;
+	private static int _rowComboIndex = 1;
+	private static M3Hotkey _hotkey = new(Dalamud.Game.ClientState.Keys.VirtualKey.G, Ctrl: true);
+	private static M3Hotkey _holdKey = M3Hotkey.None;
+	private static string _rowText = "auto";
+	private static readonly List<string> _order = ["Opener", "Burst window", "Filler", "Defensives", "Movement"];
+	private static int _orderSelected;
+	private static string _treeSelected = string.Empty;
+	private static int _manyTabs;
+	private static readonly M3Tab[] _manyTabItems =
+	[
+		new("Items"), new("Fish"), new("Weather"), new("Alarms"), new("Gather groups"), new("Gather window"),
+		new("Auto-gather"), new("Config"), new("Presets"), new("Locations"), new("Records"), new("Stats"), new("Debug"),
+	];
+
+	private static readonly string[] _sizeBuckets = ["10-20", "20-30", "30-40", "40-50", "50-60", "60-70", "70-80", "80-90"];
+	private static readonly M3ChartSeries[] _sizeSeries =
+	[
+		new("Average", [4f, 9f, 15f, 21f, 14f, 8f, 3f, 1f]),
+		new("Large", [0f, 1f, 3f, 6f, 9f, 7f, 4f, 2f]),
+		new("Big game", [0f, 0f, 0f, 1f, 2f, 3f, 2f, 1f]),
+	];
+
+	private static readonly string[] _hours = Enumerable.Range(0, 24).Select(hour => $"{hour:00}:00").ToArray();
+	private static readonly M3ChartSeries[] _hourSeries =
+	[
+		new("Catches", Enumerable.Range(0, 24).Select(hour => 12f + (9f * MathF.Sin(hour / 3.5f))).ToArray()),
+		new("Misses", Enumerable.Range(0, 24).Select(hour => 6f + (4f * MathF.Cos(hour / 2.5f))).ToArray()),
+	];
+
 	public static void Draw()
 	{
 		DrawControls();
@@ -206,8 +251,11 @@ public static class M3Gallery
 			case 5:
 				DrawLayout();
 				break;
-			default:
+			case 6:
 				DrawNavigation();
+				break;
+			default:
+				DrawCharts();
 				break;
 		}
 	}
@@ -287,8 +335,19 @@ public static class M3Gallery
 		Caption("Click a swatch to copy its hex value.");
 		DrawColorRoles();
 
+		Heading("Custom colours", isNew: true);
+		Caption("A fixed colour, its hue turned towards the accent, and the four roles CustomColor builds from it.");
+		DrawCustomColors();
+
 		Heading("Typography");
 		DrawTypography();
+
+		Heading("Text styles", isNew: true);
+		Caption("M3Text draws in the scheme's roles instead of hand-picked colours. Push applies one to any ImGui text.");
+		foreach (var style in Enum.GetValues<M3TextStyle>())
+		{
+			M3Text.Draw($"{style} - Next window in 12:40", style);
+		}
 
 		Heading("Shape");
 		DrawShapes();
@@ -314,7 +373,7 @@ public static class M3Gallery
 		var s = M3.Scheme;
 		var scale = M3.Scale;
 		var size = new Vector2(150f, 48f) * scale;
-		var flow = new Flow(M3.Space1);
+		var flow = new M3Flow(M3.Space1, RowWidth);
 
 		foreach (var (name, pick) in _roles)
 		{
@@ -347,6 +406,43 @@ public static class M3Gallery
 			if (hovered)
 			{
 				ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+			}
+		}
+	}
+
+	private static void DrawCustomColors()
+	{
+		var scale = M3.Scale;
+		var box = new Vector2(64f, 32f) * scale;
+		(string Name, Vector4 Color)[] colors =
+		[
+			("Available", new Vector4(0.30f, 0.85f, 0.35f, 1f)),
+			("Upcoming", new Vector4(0.95f, 0.65f, 0.15f, 1f)),
+			("Vulcan", new Vector4(0.45f, 0.35f, 0.75f, 1f)),
+		];
+
+		foreach (var (name, color) in colors)
+		{
+			var roles = M3.CustomColor(color);
+			(string Label, Vector4 Fill)[] swatches =
+			[
+				("Raw", color),
+				("Harmonized", M3.Harmonize(color)),
+				("Color", roles.Color),
+				("On", roles.OnColor),
+				("Container", roles.Container),
+				("On container", roles.OnContainer),
+			];
+
+			Caption(name);
+			var flow = new M3Flow(M3.Space1, RowWidth);
+			foreach (var (label, fill) in swatches)
+			{
+				flow.Next(box.X);
+				ImGui.Dummy(box);
+				var min = ImGui.GetItemRectMin();
+				ImGui.GetWindowDrawList().AddRectFilled(min, min + box, M3.U32(fill), M3.ShapeSmall);
+				M3Tooltip.Hovered($"{label} {Hex(fill)}");
 			}
 		}
 	}
@@ -390,7 +486,7 @@ public static class M3Gallery
 
 		var s = M3.Scheme;
 		var box = new Vector2(96f, 56f) * M3.Scale;
-		var flow = new Flow(M3.Space3);
+		var flow = new M3Flow(M3.Space3, RowWidth);
 		foreach (var (name, radius) in shapes)
 		{
 			flow.Next(box.X);
@@ -407,7 +503,7 @@ public static class M3Gallery
 	{
 		var s = M3.Scheme;
 		var box = new Vector2(96f, 56f) * M3.Scale;
-		var flow = new Flow(M3.Space3 * 2f);
+		var flow = new M3Flow(M3.Space3 * 2f, RowWidth);
 		for (var level = 0; level <= 3; level++)
 		{
 			flow.Next(box.X);
@@ -436,7 +532,7 @@ public static class M3Gallery
 			("Disabled", M3.Alpha(s.OnSurface, M3.DisabledContainer), M3.Alpha(s.OnSurface, M3.DisabledContent)),
 		];
 
-		var flow = new Flow(M3.Space2);
+		var flow = new M3Flow(M3.Space2, RowWidth);
 		foreach (var (name, container, content) in states)
 		{
 			flow.Next(box.X);
@@ -453,7 +549,7 @@ public static class M3Gallery
 	private static void DrawSeverities()
 	{
 		var box = new Vector2(120f, 44f) * M3.Scale;
-		var flow = new Flow(M3.Space2);
+		var flow = new M3Flow(M3.Space2, RowWidth);
 		foreach (var severity in Enum.GetValues<M3Severity>())
 		{
 			flow.Next(box.X);
@@ -509,7 +605,7 @@ public static class M3Gallery
 		var s = M3.Scheme;
 		var scale = M3.Scale;
 		var box = new Vector2(110f, 72f) * scale;
-		var flow = new Flow(M3.Space3);
+		var flow = new M3Flow(M3.Space3, RowWidth);
 
 		flow.Next(box.X);
 		using (ImRaii.Group())
@@ -570,7 +666,7 @@ public static class M3Gallery
 	private static void DrawButtons()
 	{
 		Heading("Common buttons");
-		var flow = new Flow(M3.Space2);
+		var flow = new M3Flow(M3.Space2, RowWidth);
 		foreach (var style in _buttonStyles)
 		{
 			var label = style.ToString();
@@ -581,7 +677,7 @@ public static class M3Gallery
 			}
 		}
 
-		flow = new Flow(M3.Space2);
+		flow = new M3Flow(M3.Space2, RowWidth);
 		for (var i = 0; i < _buttonStyles.Length; i++)
 		{
 			var label = $"{_buttonStyles[i]} + icon";
@@ -592,12 +688,13 @@ public static class M3Gallery
 			}
 		}
 
-		flow = new Flow(M3.Space2);
+		flow = new M3Flow(M3.Space2, RowWidth);
 		foreach (var style in _buttonStyles)
 		{
 			var label = $"{style} (disabled)";
 			flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.None, label));
-			_ = M3Widgets.Button($"##button_disabled_{style}", label, style, enabled: false);
+			_ = M3Widgets.Button($"##button_disabled_{style}", label, style, enabled: false,
+				tooltip: "A disabled button still shows its tooltip, so it can say why.");
 		}
 
 		if (M3Widgets.Button("##button_wide", "Fixed width: fills the row", M3ButtonStyle.Filled, FontAwesomeIcon.ArrowsAltH,
@@ -606,8 +703,42 @@ public static class M3Gallery
 			Pressed("Full width");
 		}
 
+		Heading("Accent colours and game icons", isNew: true);
+		Caption("An accent recolours a button with the same roles the scheme uses. A texture takes the icon's place.");
+		var purple = new Vector4(0.45f, 0.35f, 0.75f, 1f);
+		var blue = new Vector4(0.25f, 0.45f, 0.70f, 1f);
+		flow = new M3Flow(M3.Space2, RowWidth);
+		foreach (var style in (ReadOnlySpan<M3ButtonStyle>)[M3ButtonStyle.Filled, M3ButtonStyle.Tonal, M3ButtonStyle.Outlined])
+		{
+			var label = $"Vulcan ({style})";
+			flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.Hammer, label));
+			_ = M3Widgets.Button($"##button_accent_{style}", label, style, FontAwesomeIcon.Hammer, accent: purple);
+		}
+
+		flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.None, "Collectables"));
+		_ = M3Widgets.Button("##button_accent_blue", "Collectables", M3ButtonStyle.Tonal, accent: blue);
+
+		var jobIcon = M3ActionIcon.GameIcon(_demoIcons[2]);
+		flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.None, "With a game icon", jobIcon));
+		_ = M3Widgets.Button("##button_texture", "With a game icon", M3ButtonStyle.Outlined, texture: jobIcon);
+
+		Heading("Hold to confirm", isNew: true);
+		Caption("Fills while held and only fires when full, for actions a stray click shouldn't trigger.");
+		flow = new M3Flow(M3.Space2, RowWidth);
+		flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.TrashAlt, "Delete preset"));
+		if (M3Widgets.HoldButton("##hold_delete", "Delete preset", icon: FontAwesomeIcon.TrashAlt))
+		{
+			Pressed("Delete preset");
+		}
+
+		flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.Undo, "Reset all (2s)"));
+		if (M3Widgets.HoldButton("##hold_reset", "Reset all (2s)", 2f, M3ButtonStyle.Tonal, FontAwesomeIcon.Undo))
+		{
+			Pressed("Reset all");
+		}
+
 		Heading("Icon buttons");
-		flow = new Flow(M3.Space1);
+		flow = new M3Flow(M3.Space1, RowWidth);
 		for (var i = 0; i < _buttonStyles.Length; i++)
 		{
 			flow.Next(M3Widgets.IconButtonSize);
@@ -623,6 +754,8 @@ public static class M3Gallery
 		_ = M3Widgets.IconButton("##icon_small", FontAwesomeIcon.Cog, "28dp", M3ButtonStyle.Tonal, diameter: 28f * M3.Scale);
 		flow.Next(48f * M3.Scale);
 		_ = M3Widgets.IconButton("##icon_large", FontAwesomeIcon.Cog, "48dp", M3ButtonStyle.Tonal, diameter: 48f * M3.Scale);
+		flow.Next(M3Widgets.IconButtonSize);
+		_ = M3Widgets.IconButton("##icon_disabled", FontAwesomeIcon.Cog, "Disabled, with a tooltip", M3ButtonStyle.Tonal, enabled: false);
 
 		Heading("Toggle icon buttons", isNew: true);
 		Caption("Standard, filled, tonal, outlined and danger styles; the first two swap glyphs as well.");
@@ -635,7 +768,7 @@ public static class M3Gallery
 			(FontAwesomeIcon.Lock, FontAwesomeIcon.LockOpen, M3ButtonStyle.Danger, "Unlock"),
 		];
 
-		flow = new Flow(M3.Space1);
+		flow = new M3Flow(M3.Space1, RowWidth);
 		for (var i = 0; i < toggles.Length; i++)
 		{
 			var (icon, selected, style, tip) = toggles[i];
@@ -730,6 +863,37 @@ public static class M3Gallery
 		ImGui.SameLine(0f, M3.Space3);
 		_ = M3Widgets.Checkbox("##check_b", ref _checkB);
 		Beside(_checkB ? "Checked" : "Unchecked", muted: false);
+		ImGui.SameLine(0f, M3.Space3);
+		var disabledCheck = true;
+		_ = M3Widgets.Checkbox("##check_disabled", ref disabledCheck, enabled: false);
+		Beside("Disabled");
+
+		Heading("Labelled checkboxes", isNew: true);
+		Caption("The label is part of the click target. These wrap with M3Flow, like a row of toggles in a small overlay.");
+		var flow = new M3Flow(M3.Space3, RowWidth);
+		for (var i = 0; i < _labeledChecks.Length; i++)
+		{
+			var label = $"{_labeledCheckNames[i]}##gallery_labeled_{i}";
+			flow.Next(M3Widgets.LabeledCheckboxWidth(label));
+			_ = M3Widgets.LabeledCheckbox(label, ref _labeledChecks[i], tooltip: i == 3 ? "Labelled checkboxes take a tooltip" : null);
+		}
+
+		Caption("A mixed box stands for children that don't agree. Clicking it turns them all on.");
+		var all = Array.TrueForAll(_mixedChildren, on => on);
+		var any = Array.Exists(_mixedChildren, on => on);
+		var parent = all;
+		if (M3Widgets.LabeledCheckbox("All gathering jobs##gallery_mixed", ref parent, mixed: any && !all))
+		{
+			Array.Fill(_mixedChildren, parent);
+		}
+
+		using (M3SubGroup.Begin())
+		{
+			for (var i = 0; i < _mixedChildren.Length; i++)
+			{
+				_ = M3Widgets.LabeledCheckbox($"{_mixedNames[i]}##gallery_mixed_{i}", ref _mixedChildren[i]);
+			}
+		}
 
 		Heading("Radio buttons", isNew: true);
 		var picked = M3Widgets.RadioGroup("##radio_vertical", _radioOptions, _radioIndex);
@@ -754,7 +918,7 @@ public static class M3Gallery
 		Beside("A bare radio button; the caller owns its state.");
 
 		Heading("Filter and menu chips");
-		var flow = new Flow(M3.Space1);
+		flow = new M3Flow(M3.Space1, RowWidth);
 		for (var i = 0; i < _filterNames.Length; i++)
 		{
 			var icon = _filters[i] ? FontAwesomeIcon.Check : FontAwesomeIcon.None;
@@ -767,6 +931,16 @@ public static class M3Gallery
 
 		flow.Next(M3Widgets.ChipWidth("Tertiary", FontAwesomeIcon.Leaf));
 		_ = M3Widgets.Chip("##chip_accent", "Tertiary", true, FontAwesomeIcon.Leaf, "Chips take an accent", M3.Scheme.Tertiary);
+
+		var chipIcon = M3ActionIcon.GameIcon(_demoIcons[5]);
+		flow.Next(M3Widgets.ChipWidth("Game icon", texture: chipIcon));
+		if (M3Widgets.Chip("##chip_texture", "Game icon", _filters[0], tooltip: "Chips take a texture, such as a game icon", texture: chipIcon))
+		{
+			_filters[0] = !_filters[0];
+		}
+
+		flow.Next(M3Widgets.ChipWidth("Disabled"));
+		_ = M3Widgets.Chip("##chip_disabled", "Disabled", false, tooltip: "Disabled chips keep their tooltip", enabled: false);
 
 		var menuLabel = _menuOptions[_menuIndex];
 		flow.Next(M3Widgets.ChipWidth(menuLabel, FontAwesomeIcon.Filter, FontAwesomeIcon.CaretDown));
@@ -791,7 +965,7 @@ public static class M3Gallery
 		}
 
 		Heading("Input chips", isNew: true);
-		flow = new Flow(M3.Space1);
+		flow = new M3Flow(M3.Space1, RowWidth);
 		for (var i = 0; i < _tags.Count; i++)
 		{
 			flow.Next(M3Widgets.InputChipWidth(_tags[i], FontAwesomeIcon.Tag));
@@ -815,7 +989,7 @@ public static class M3Gallery
 		}
 
 		Heading("Pills");
-		flow = new Flow(M3.Space1);
+		flow = new M3Flow(M3.Space1, RowWidth);
 		foreach (var severity in Enum.GetValues<M3Severity>())
 		{
 			var label = severity.ToString();
@@ -837,10 +1011,17 @@ public static class M3Gallery
 		_ = M3Widgets.SliderInt("##slider_int", ref _sliderInt, 0, 10, _sliderInt.ToString(), track);
 		_ = M3Widgets.RowDragFloat("Row slider (float)###gallery_row_float", ref _rowFloat, 0f, 5f, "%.1f s");
 		_ = M3Widgets.RowDragInt("Row slider (int)###gallery_row_int", ref _rowInt, 0, 30);
+		_ = M3Widgets.RowDragFloat("Logarithmic slider###gallery_row_log", ref _logSlider, 0.1f, 100f, "%.2f",
+			"Logarithmic sliders give the low end of a wide range more of the track.", logarithmic: true);
+		var disabledSlider = 0.6f;
+		_ = M3Widgets.RowDragFloat("Disabled slider###gallery_row_disabled", ref disabledSlider, 0f, 1f, "%.1f",
+			"Rows dim their label along with the control.", enabled: false);
 
 		Heading("Colour swatch");
 		_ = M3Widgets.ColorSwatch("##gallery_swatch", ref _swatch);
-		Beside($"Opens a picker. Now {Hex(_swatch)}.");
+		Beside($"Opens a picker with a hex field. Now {Hex(_swatch)}.");
+		_ = M3Widgets.RowColor("Colour row###gallery_row_color", ref _rowColor, _rowColorDefault,
+			"Change it and a reset button appears. The picker has one too.");
 	}
 
 	#endregion
@@ -871,6 +1052,42 @@ public static class M3Gallery
 		_ = M3Widgets.Combo("##gallery_combo", ref _comboIndex, _comboItems, width);
 		ImGui.Dummy(new Vector2(0f, M3.Space1));
 		_ = M3Widgets.Combo("##gallery_combo_empty", ref _comboEmpty, _comboItems, width, "Nothing picked yet");
+
+		Heading("Search, enums and item tooltips", isNew: true);
+		_bigComboItems ??= Enumerable.Range(1, 5000).Select(i => $"Item {i:0000}").ToArray();
+		_ = M3Widgets.Combo("##gallery_combo_big", ref _bigComboIndex, _bigComboItems, width, search: true);
+		Caption("5,000 items with a search box. Enter picks the first match, and only the rows in view are drawn.");
+		ImGui.Dummy(new Vector2(0f, M3.Space1));
+		_ = M3Widgets.Combo("##gallery_combo_enum", ref _enumChoice, width, itemTooltip: value => $"Picks {value}");
+		Caption("An enum combo. Labels come from the value names, or pass your own.");
+		ImGui.Dummy(new Vector2(0f, M3.Space1));
+		_ = M3Widgets.Combo("##gallery_combo_rules", ref _ruleIndex, _comboItems.Length, i => _comboItems[i], width,
+			itemEnabled: i => i != 2, itemTooltip: i => i == 2 ? "Items can be disabled, and say why" : null);
+		ImGui.Dummy(new Vector2(0f, M3.Space1));
+		_ = M3Widgets.Combo("##gallery_combo_off", ref _comboIndex, _comboItems, width, enabled: false, tooltip: "A disabled combo");
+		_ = M3Widgets.RowCombo("Row combo###gallery_row_combo", ref _rowComboIndex, _sizeOptions, "A combo in a setting row.");
+		_ = M3Widgets.RowCombo("Row enum combo###gallery_row_enum", ref _rowEnum, "Sized to its longest label.");
+
+		Heading("Number fields", isNew: true);
+		_ = M3Widgets.RowNumber("Max distance###gallery_distance", ref _distance, 0.1f, 0f, 30f, "%.1f", "y",
+			"Typed values are clamped to 0 - 30. The buttons repeat while held.");
+		_ = M3Widgets.RowNumber("Execution delay###gallery_delay", ref _delay, 50, 0, 1500, "ms", "Whole numbers, in steps of 50.");
+		var fieldWidth = M3Widgets.NumberFieldWidth();
+		_ = M3Widgets.NumberField("##gallery_number_bare", ref _distance, fieldWidth, format: "%.2f");
+		Beside("A bare field, with no steps or unit.");
+
+		Heading("Hotkeys", isNew: true);
+		_ = M3Widgets.RowHotkey("Open the main window###gallery_hotkey", ref _hotkey, "Click, then press a key. Escape cancels.");
+		_ = M3Widgets.RowHotkey("Hold to show###gallery_hold_key", ref _holdKey, "Only the key; Ctrl, Shift and Alt are ignored.", modifiers: false);
+
+		Heading("Text rows and help markers", isNew: true);
+		_ = M3Widgets.RowText("Lifestream command###gallery_row_text", ref _rowText, "auto", "A text field in a setting row.");
+		ImGui.AlignTextToFramePadding();
+		ImGui.TextUnformatted("Follow distance");
+		ImGui.SameLine(0f, M3.Space1);
+		M3Widgets.HelpMarker("A help marker explains a control on hover. It's as tall as a frame, so it lines up with controls.");
+		ImGui.SameLine(0f, M3.Space3);
+		M3Widgets.HelpMarker("Help markers take any icon and colour.", FontAwesomeIcon.ExclamationTriangle, M3.Scheme.Warning);
 	}
 
 	#endregion
@@ -912,7 +1129,7 @@ public static class M3Gallery
 		M3Widgets.LinearProgressIndeterminate(new Vector2(width, 4f * scale));
 
 		Heading("Circular progress", isNew: true);
-		var flow = new Flow(M3.Space3);
+		var flow = new M3Flow(M3.Space3, RowWidth);
 		flow.Next(48f * scale);
 		M3Widgets.CircularProgress(48f * scale, _progress);
 		flow.Next(64f * scale);
@@ -927,7 +1144,7 @@ public static class M3Gallery
 		Caption("Determinate ones follow the slider above. The last is a bare Spinner, which draws anywhere in any colour.");
 
 		Heading("Badges", isNew: true);
-		flow = new Flow(M3.Space2);
+		flow = new M3Flow(M3.Space2, RowWidth);
 		(FontAwesomeIcon Icon, string? Text, string Tip)[] badges =
 		[
 			(FontAwesomeIcon.Bell, null, "A dot"),
@@ -949,7 +1166,7 @@ public static class M3Gallery
 
 		Heading("Snackbars", isNew: true);
 		Caption("Shown along the bottom of this window, one at a time. Hovering one holds it on screen.");
-		flow = new Flow(M3.Space2);
+		flow = new M3Flow(M3.Space2, RowWidth);
 		flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.None, "Message"));
 		if (M3Widgets.Button("##snack_plain", "Message", M3ButtonStyle.Tonal))
 		{
@@ -978,7 +1195,7 @@ public static class M3Gallery
 		}
 
 		Heading("Dialogs", isNew: true);
-		flow = new Flow(M3.Space2);
+		flow = new M3Flow(M3.Space2, RowWidth);
 		flow.Next(M3Widgets.ButtonWidth(FontAwesomeIcon.Undo, "With hero icon"));
 		if (M3Widgets.Button("##dialog_icon_open", "With hero icon", M3ButtonStyle.Tonal, FontAwesomeIcon.Undo))
 		{
@@ -1110,12 +1327,94 @@ public static class M3Gallery
 
 		Heading("Action icons");
 		DrawActionIcons();
+
+		Heading("Tree", isNew: true);
+		Caption("Click a branch to open it, or use the arrow keys. Right-click a fish for its menu.");
+		DrawTree();
+
+		Heading("Reorder list", isNew: true);
+		Caption("Drag a row, or hold Ctrl and press up or down while a row has keyboard focus.");
+		if (M3Widgets.ReorderList("##gallery_order", _order, step => step, ref _orderSelected, step => $"{step}: drag to move"))
+		{
+			M3Snackbar.Show($"New order: {string.Join(", ", _order)}", duration: 2f);
+		}
+	}
+
+	private static void DrawTree()
+	{
+		(string Zone, string[] Fish)[] zones =
+		[
+			("La Noscea", ["Malm Kelp", "Ogre Barracuda", "Navigator's Dagger"]),
+			("The Black Shroud", ["Dark Bass", "Shadow Catfish"]),
+			("Thanalan", ["Dustfish", "Sandfish", "Storm Core"]),
+		];
+
+		using var expansion = M3Tree.Node("gallery_tree_arr", "A Realm Reborn", icon: FontAwesomeIcon.Globe, defaultOpen: true, trailing: "8 fish");
+		if (!expansion.Open)
+		{
+			return;
+		}
+
+		foreach (var (zone, fish) in zones)
+		{
+			using var zoneNode = M3Tree.Node($"gallery_tree_{zone}", zone, icon: FontAwesomeIcon.MapMarkerAlt, trailing: fish.Length.ToString());
+			if (!zoneNode.Open)
+			{
+				continue;
+			}
+
+			foreach (var name in fish)
+			{
+				using var leaf = M3Tree.Node($"gallery_tree_{name}", name, _treeSelected == name, leaf: true, icon: FontAwesomeIcon.Fish);
+				if (leaf.Clicked)
+				{
+					_treeSelected = name;
+				}
+
+				using var menu = M3Menu.BeginContext($"gallery_tree_menu_{name}");
+				if (menu.IsOpen)
+				{
+					DrawFishMenu(name);
+				}
+			}
+		}
+	}
+
+	private static void DrawFishMenu(string name)
+	{
+		M3Menu.Heading(name);
+		if (M3Menu.Item("##fish_alarm", "Add alarm", FontAwesomeIcon.Bell, shortcut: "Ctrl+A"))
+		{
+			Pressed($"Alarm for {name}");
+		}
+
+		if (M3Menu.Item("##fish_copy", "Copy name", FontAwesomeIcon.Copy))
+		{
+			ImGui.SetClipboardText(name);
+		}
+
+		using (var sub = M3Menu.BeginSub("##fish_list", "Add to list", FontAwesomeIcon.ListUl))
+		{
+			if (sub.IsOpen)
+			{
+				foreach (var list in (ReadOnlySpan<string>)["Daily", "Weekly", "Big fish"])
+				{
+					if (M3Menu.Item($"##fish_list_{list}", list))
+					{
+						Pressed($"{name} added to {list}");
+					}
+				}
+			}
+		}
+
+		M3Menu.Divider();
+		_ = M3Menu.Item("##fish_remove", "Remove", FontAwesomeIcon.TrashAlt, enabled: false, tooltip: "Disabled items can say why");
 	}
 
 	private static void DrawActionIcons()
 	{
 		var scale = M3.Scale;
-		var flow = new Flow(M3.Space2);
+		var flow = new M3Flow(M3.Space2, RowWidth);
 		foreach (var size in _actionIconSizes)
 		{
 			flow.Next(size * scale);
@@ -1130,7 +1429,7 @@ public static class M3Gallery
 
 		Caption("With cooldowns and charges:");
 		var time = (float)ImGui.GetTime();
-		flow = new Flow(M3.Space1);
+		flow = new M3Flow(M3.Space1, RowWidth);
 		for (var i = 0; i < _demoIcons.Length; i++)
 		{
 			var recast = 2.5f + (i * 5f);
@@ -1156,10 +1455,12 @@ public static class M3Gallery
 		M3NavItem[] items =
 		[
 			new("home", "Home", FontAwesomeIcon.Home, _navSelected == "home"),
-			new("rotations", "Rotations", FontAwesomeIcon.Sync, _navSelected == "rotations", "Items take a tooltip", Badge: "2"),
-			new("actions", "Actions", FontAwesomeIcon.Bolt, _navSelected == "actions", SeparatorAfter: true),
-			new("settings", "Settings", FontAwesomeIcon.Cog, _navSelected == "settings"),
-			new("debug", "Debug", FontAwesomeIcon.Bug, _navSelected == "debug", Accent: s.Tertiary),
+			new("rotations", "Rotations", FontAwesomeIcon.Sync, _navSelected == "rotations", "Items take a tooltip", Badge: "2", Section: "Combat"),
+			new("actions", "Actions", FontAwesomeIcon.Bolt, _navSelected == "actions", Section: "Combat"),
+			new("jobs", "Jobs", FontAwesomeIcon.User, _navSelected == "jobs", "A texture can stand in for the icon", Section: "Combat",
+				Texture: M3ActionIcon.GameIcon(_demoIcons[0])),
+			new("settings", "Settings", FontAwesomeIcon.Cog, _navSelected == "settings", Section: "Plugin"),
+			new("debug", "Debug", FontAwesomeIcon.Bug, _navSelected == "debug", Accent: s.Tertiary, Section: "Plugin"),
 		];
 
 		var height = 300f * scale;
@@ -1182,6 +1483,7 @@ public static class M3Gallery
 		}
 
 		Caption($"The drawer collapses to the rail below {M3Navigation.DrawerBreakpoint:0}dp. Both share one selection.");
+		Caption("Sections put a heading over each group in the drawer, and a divider in the rail.");
 
 		Heading("Tabs", isNew: true);
 		Caption("The page switcher at the top of this gallery is a primary tab row too.");
@@ -1206,6 +1508,66 @@ public static class M3Gallery
 		}
 
 		Caption("Secondary tabs, for a second level under primary ones.");
+
+		Heading("Scrolling tabs", isNew: true);
+		Caption("When the labels won't fit, the row scrolls instead of shortening them. The arrows and the mouse wheel move it.");
+		picked = M3Navigation.Tabs("##gallery_tabs_many", _manyTabItems, _manyTabs, width: MathF.Min(RowWidth, 520f * scale));
+		if (picked >= 0)
+		{
+			_manyTabs = picked;
+		}
+
+		Heading("Menus", isNew: true);
+		Caption("A menu from a button, with a submenu. Picking an item closes every open menu. Right-click the button for the same menu.");
+		if (M3Widgets.Button("##gallery_menu_open", "Open menu", M3ButtonStyle.Tonal, FontAwesomeIcon.EllipsisH))
+		{
+			M3Menu.Open("##gallery_menu");
+		}
+
+		using (var context = M3Menu.BeginContext("##gallery_menu_context"))
+		{
+			if (context.IsOpen)
+			{
+				DrawFishMenu("Striking Dummy");
+			}
+		}
+
+		using (var menu = M3Menu.Begin("##gallery_menu"))
+		{
+			if (menu.IsOpen)
+			{
+				DrawFishMenu("Striking Dummy");
+			}
+		}
+	}
+
+	#endregion
+
+	#region Charts
+
+	private static void DrawCharts()
+	{
+		var scale = M3.Scale;
+		var width = RowWidth;
+
+		Heading("Stacked bars", isNew: true);
+		Caption("Catches by size. Hover a column for every value in it.");
+		M3Chart.Bars("##gallery_chart_stacked", _sizeBuckets, _sizeSeries, new Vector2(width, 220f * scale), yTitle: "Catches", xTitle: "Size (ilms)");
+
+		Heading("Grouped bars", isNew: true);
+		M3Chart.Bars("##gallery_chart_grouped", _sizeBuckets, _sizeSeries, new Vector2(width, 220f * scale), stacked: false, yTitle: "Catches");
+
+		Heading("Lines", isNew: true);
+		Caption("The crosshair snaps to the nearest hour and lists both series.");
+		M3Chart.Lines("##gallery_chart_lines", _hours, _hourSeries, new Vector2(width, 200f * scale), value => value.ToString("0.0"));
+
+		Heading("Single series", isNew: true);
+		Caption("One series needs no legend; the heading says what it is.");
+		M3Chart.Bars("##gallery_chart_single", _sizeBuckets, [_sizeSeries[0]], new Vector2(width, 160f * scale));
+
+		Heading("Table view", isNew: true);
+		Caption("The same numbers as a table, so nothing depends on hovering.");
+		M3Chart.Table("##gallery_chart_table", _sizeBuckets, _sizeSeries, categoryTitle: "Size");
 	}
 
 	#endregion
@@ -1254,25 +1616,6 @@ public static class M3Gallery
 		}
 
 		return $"#{Channel(color.X):X2}{Channel(color.Y):X2}{Channel(color.Z):X2}";
-	}
-
-	private struct Flow(float gap)
-	{
-		private readonly float _available = RowWidth;
-		private float _used;
-
-		public void Next(float width)
-		{
-			if (_used > 0f && _used + gap + width <= _available)
-			{
-				ImGui.SameLine(0f, gap);
-				_used += gap + width;
-			}
-			else
-			{
-				_used = width;
-			}
-		}
 	}
 
 	#endregion

@@ -26,7 +26,7 @@ public enum M3ButtonStyle
 	Danger,
 }
 
-public static class M3Widgets
+public static partial class M3Widgets
 {
 	#region Switch
 
@@ -105,6 +105,7 @@ public static class M3Widgets
 				checkColor, 2f * scale);
 		}
 
+		M3Draw.FocusRing(trackMin, trackMax, trackRadius);
 		return changed;
 	}
 
@@ -117,53 +118,121 @@ public static class M3Widgets
 		return new Vector2(20f, 20f) * M3.Scale;
 	}
 
-	public static bool Checkbox(string id, ref bool value)
+	// Mixed draws a dash, for a box that stands for several values that don't agree. A click still flips value.
+	public static bool Checkbox(string id, ref bool value, bool enabled = true, bool mixed = false)
 	{
-		var s = M3.Scheme;
-		var scale = M3.Scale;
-		var box = CheckboxSize();
-		var hit = box + new Vector2(8f, 8f) * scale;
+		var hit = CheckboxSize() + (new Vector2(8f, 8f) * M3.Scale);
 
 		var changed = false;
-		if (ImGui.InvisibleButton(id, hit))
+		if (ImGui.InvisibleButton(id, hit) && enabled)
 		{
 			value = !value;
 			changed = true;
 		}
 
-		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var held = ImGui.IsItemActive();
+		var hovered = enabled && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
-		var center = min + (hit * 0.5f);
+		DrawCheckbox(ImGui.GetWindowDrawList(), min + (hit * 0.5f), ImGui.GetID(id), value, mixed, hovered, held, enabled);
+		M3Draw.FocusRing(min, min + hit, hit.X * 0.5f);
+
+		if (hovered)
+		{
+			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+		}
+
+		return changed;
+	}
+
+	public static float LabeledCheckboxWidth(string label)
+	{
+		var scale = M3.Scale;
+		return CheckboxSize().X + (12f * scale) + ImGui.CalcTextSize(SplitLabel(label).Label).X + (8f * scale);
+	}
+
+	// The label is part of the click target. "Label##id" hides the id part as usual.
+	public static bool LabeledCheckbox(string label, ref bool value, bool enabled = true, bool mixed = false, string? tooltip = null)
+	{
+		var s = M3.Scheme;
+		var scale = M3.Scale;
+		var (display, id) = SplitLabel(label);
+		var hit = CheckboxSize() + (new Vector2(8f, 8f) * scale);
+		var size = new Vector2(LabeledCheckboxWidth(label), MathF.Max(hit.Y, ImGui.GetFrameHeight()));
+
+		var changed = false;
+		if (ImGui.InvisibleButton(id, size) && enabled)
+		{
+			value = !value;
+			changed = true;
+		}
+
+		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var hovered = enabled && mouseOver;
+		var held = enabled && ImGui.IsItemActive();
+		var min = ImGui.GetItemRectMin();
+		var drawList = ImGui.GetWindowDrawList();
+		DrawCheckbox(drawList, new Vector2(min.X + (hit.X * 0.5f), min.Y + (size.Y * 0.5f)), ImGui.GetID(id), value, mixed, hovered, held, enabled);
+
+		var textSize = ImGui.CalcTextSize(display);
+		drawList.AddText(new Vector2(min.X + hit.X + (4f * scale), min.Y + ((size.Y - textSize.Y) * 0.5f)),
+			M3.U32(s.OnSurface, enabled ? 0.95f : M3.DisabledContent), display);
+		M3Draw.FocusRing(min, min + size, M3.ShapeSmall);
+
+		if (hovered)
+		{
+			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+		}
+
+		if (mouseOver)
+		{
+			M3Tooltip.Show(tooltip);
+		}
+
+		return changed;
+	}
+
+	private static void DrawCheckbox(ImDrawListPtr drawList, Vector2 center, uint id, bool value, bool mixed, bool hovered, bool held, bool enabled)
+	{
+		var s = M3.Scheme;
+		var scale = M3.Scale;
+		var box = CheckboxSize();
 		var boxMin = center - (box * 0.5f);
 		var boxMax = center + (box * 0.5f);
-		var drawList = ImGui.GetWindowDrawList();
-		var progress = M3Motion.Approach(ImGui.GetID(id), value ? 1f : 0f, M3Motion.FastDuration);
+		var dim = enabled ? 1f : M3.DisabledContent;
+		var filled = value || mixed;
+		var progress = M3Motion.Approach(id, filled ? 1f : 0f, M3Motion.FastDuration);
 
 		if (hovered || held)
 		{
-			drawList.AddCircleFilled(center, hit.X * 0.55f, M3.U32(value ? s.Primary : s.OnSurface, held ? M3.StatePressed : M3.StateHover));
+			drawList.AddCircleFilled(center, (box.X + (8f * scale)) * 0.55f,
+				M3.U32(filled ? s.Primary : s.OnSurface, held ? M3.StatePressed : M3.StateHover));
 		}
 
 		if (progress > 0.01f)
 		{
-			drawList.AddRectFilled(boxMin, boxMax, M3.U32(s.Primary, progress), M3.ShapeExtraSmall * 0.5f);
+			drawList.AddRectFilled(boxMin, boxMax, M3.U32(enabled ? s.Primary : s.OnSurface, progress * dim), M3.ShapeExtraSmall * 0.5f);
 		}
 
 		if (progress < 0.99f)
 		{
-			drawList.AddRect(boxMin, boxMax, M3.U32(s.OnSurfaceVariant, 1f - progress), M3.ShapeExtraSmall * 0.5f, ImDrawFlags.None, 2f * scale);
+			drawList.AddRect(boxMin, boxMax, M3.U32(s.OnSurfaceVariant, (1f - progress) * dim), M3.ShapeExtraSmall * 0.5f, ImDrawFlags.None, 2f * scale);
 		}
 
-		if (progress > 0.2f)
+		if (progress <= 0.2f)
 		{
-			var tick = box.X * 0.26f;
-			var color = M3.U32(s.OnPrimary, progress);
-			drawList.AddLine(center + new Vector2(-tick, 0f), center + new Vector2(-tick * 0.25f, tick * 0.8f), color, 2f * scale);
-			drawList.AddLine(center + new Vector2(-tick * 0.25f, tick * 0.8f), center + new Vector2(tick, -tick * 0.7f), color, 2f * scale);
+			return;
 		}
 
-		return changed;
+		var tick = box.X * 0.26f;
+		var color = M3.U32(enabled ? s.OnPrimary : s.Surface, progress);
+		if (mixed)
+		{
+			drawList.AddLine(center - new Vector2(tick, 0f), center + new Vector2(tick, 0f), color, 2f * scale);
+			return;
+		}
+
+		drawList.AddLine(center + new Vector2(-tick, 0f), center + new Vector2(-tick * 0.25f, tick * 0.8f), color, 2f * scale);
+		drawList.AddLine(center + new Vector2(-tick * 0.25f, tick * 0.8f), center + new Vector2(tick, -tick * 0.7f), color, 2f * scale);
 	}
 
 	#endregion
@@ -186,6 +255,7 @@ public static class M3Widgets
 		var progress = M3Motion.Approach(ImGui.GetID(id), selected ? 1f : 0f, M3Motion.FastDuration);
 
 		DrawRadio(ImGui.GetWindowDrawList(), center, hit.X, progress, selected, hovered, held, enabled);
+		M3Draw.FocusRing(ImGui.GetItemRectMin(), ImGui.GetItemRectMax(), hit.X * 0.5f);
 
 		if (hovered)
 		{
@@ -233,6 +303,7 @@ public static class M3Widgets
 
 			drawList.AddText(new Vector2(min.X + radio.X + labelGap, min.Y + ((height - textSize.Y) * 0.5f)),
 				M3.U32(s.OnSurface, enabled ? 0.95f : M3.DisabledContent), options[i]);
+			M3Draw.FocusRing(min, ImGui.GetItemRectMax(), M3.ShapeSmall);
 
 			if (hovered)
 			{
@@ -269,13 +340,40 @@ public static class M3Widgets
 
 	public static float ButtonHeight => M3.FitText(40f, 8f);
 
-	public static float ButtonWidth(FontAwesomeIcon icon, string label)
+	private static float TextureIconSize => MathF.Max(18f * M3.Scale, ImGui.GetTextLineHeight());
+
+	private static float IconSlotWidth(FontAwesomeIcon icon, IDalamudTextureWrap? texture)
+	{
+		return texture != null ? TextureIconSize : icon == FontAwesomeIcon.None ? 0f : M3Draw.MeasureIcon(icon).X;
+	}
+
+	// A texture wins over the icon. While the texture is still loading, the icon shows in its place.
+	private static void DrawIconSlot(ImDrawListPtr drawList, FontAwesomeIcon icon, IDalamudTextureWrap? texture, float x, float top, float height, Vector4 color, float alpha = 1f)
+	{
+		if (texture != null)
+		{
+			var size = TextureIconSize;
+			if (M3Draw.Texture(drawList, texture, new Vector2(x, top + ((height - size) * 0.5f)), size, alpha))
+			{
+				return;
+			}
+		}
+
+		if (icon != FontAwesomeIcon.None)
+		{
+			var iconSize = M3Draw.MeasureIcon(icon);
+			M3Draw.Icon(drawList, icon, new Vector2(x, top + ((height - iconSize.Y) * 0.5f)), color);
+		}
+	}
+
+	public static float ButtonWidth(FontAwesomeIcon icon, string label, IDalamudTextureWrap? texture = null)
 	{
 		var scale = M3.Scale;
 		var width = 24f * scale * 2f;
-		if (icon != FontAwesomeIcon.None)
+		var iconWidth = IconSlotWidth(icon, texture);
+		if (iconWidth > 0f)
 		{
-			width += M3Draw.MeasureIcon(icon).X + (8f * scale);
+			width += iconWidth + (8f * scale);
 		}
 
 		if (!string.IsNullOrEmpty(label))
@@ -286,29 +384,51 @@ public static class M3Widgets
 		return MathF.Max(width, 64f * scale);
 	}
 
-	public static bool Button(string id, string label, M3ButtonStyle style = M3ButtonStyle.Tonal, FontAwesomeIcon icon = FontAwesomeIcon.None, float? width = null, bool enabled = true, string? tooltip = null)
+	private static (Vector4 Container, Vector4 Content, Vector4? Outline) ButtonColors(M3ButtonStyle style, Vector4? accent)
+	{
+		var s = M3.Scheme;
+		var clear = M3.Alpha(s.Surface, 0f);
+
+		if (accent is { } tone && style != M3ButtonStyle.Danger)
+		{
+			var roles = M3.CustomColor(tone, harmonize: false);
+			return style switch
+			{
+				M3ButtonStyle.Filled => (roles.Color, roles.OnColor, null),
+				M3ButtonStyle.Tonal => (roles.Container, roles.OnContainer, null),
+				M3ButtonStyle.Outlined => (clear, roles.Color, M3.Alpha(roles.Color, 0.7f)),
+				_ => (clear, roles.Color, null),
+			};
+		}
+
+		return style switch
+		{
+			M3ButtonStyle.Filled => (s.Primary, s.OnPrimary, null),
+			M3ButtonStyle.Tonal => (s.SecondaryContainer, s.OnSecondaryContainer, null),
+			M3ButtonStyle.Outlined => (clear, s.Primary, s.Outline),
+			M3ButtonStyle.Danger => (s.ErrorContainer, s.OnErrorContainer, null),
+			_ => (clear, s.Primary, null),
+		};
+	}
+
+	// The tooltip also shows while disabled, so it can say why.
+	public static bool Button(string id, string label, M3ButtonStyle style = M3ButtonStyle.Tonal, FontAwesomeIcon icon = FontAwesomeIcon.None, float? width = null, bool enabled = true, string? tooltip = null, Vector4? accent = null, IDalamudTextureWrap? texture = null)
 	{
 		var s = M3.Scheme;
 		var scale = M3.Scale;
 		var height = ButtonHeight;
-		var size = new Vector2(width ?? ButtonWidth(icon, label), height);
+		var size = new Vector2(width ?? ButtonWidth(icon, label, texture), height);
 
 		var pressed = ImGui.InvisibleButton(id, size) && enabled;
-		var hovered = enabled && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var hovered = enabled && mouseOver;
 		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();
 		var drawList = ImGui.GetWindowDrawList();
 		var rounding = height * 0.5f;
 
-		var (container, content, outline) = style switch
-		{
-			M3ButtonStyle.Filled => (s.Primary, s.OnPrimary, (Vector4?)null),
-			M3ButtonStyle.Tonal => (s.SecondaryContainer, s.OnSecondaryContainer, (Vector4?)null),
-			M3ButtonStyle.Outlined => (M3.Alpha(s.Surface, 0f), s.Primary, s.Outline),
-			M3ButtonStyle.Danger => (s.ErrorContainer, s.OnErrorContainer, (Vector4?)null),
-			_ => (M3.Alpha(s.Surface, 0f), s.Primary, (Vector4?)null),
-		};
+		var (container, content, outline) = ButtonColors(style, accent);
 
 		if (!enabled)
 		{
@@ -325,22 +445,15 @@ public static class M3Widgets
 
 		M3Draw.Container(drawList, min, max, container, rounding, outline, 1f);
 
-		var iconWidth = icon == FontAwesomeIcon.None ? 0f : M3Draw.MeasureIcon(icon).X;
-		var gap = icon == FontAwesomeIcon.None || string.IsNullOrEmpty(label) ? 0f : 8f * scale;
+		var iconWidth = IconSlotWidth(icon, texture);
+		var gap = iconWidth <= 0f || string.IsNullOrEmpty(label) ? 0f : 8f * scale;
 		var textSize = string.IsNullOrEmpty(label) ? Vector2.Zero : ImGui.CalcTextSize(label);
 		var contentWidth = iconWidth + gap + textSize.X;
 		var cursorX = min.X + ((size.X - contentWidth) * 0.5f);
 
-		if (icon != FontAwesomeIcon.None)
+		if (iconWidth > 0f)
 		{
-			using (ImRaii.PushFont(UiBuilder.IconFont))
-			{
-				var glyph = icon.ToIconString();
-				var glyphSize = ImGui.CalcTextSize(glyph);
-				drawList.AddText(UiBuilder.IconFont, ImGui.GetFontSize(),
-					new Vector2(cursorX, min.Y + ((height - glyphSize.Y) * 0.5f)), M3.U32(content), glyph);
-			}
-
+			DrawIconSlot(drawList, icon, texture, cursorX, min.Y, height, content, enabled ? 1f : M3.DisabledContent);
 			cursorX += iconWidth + gap;
 		}
 
@@ -349,32 +462,78 @@ public static class M3Widgets
 			drawList.AddText(new Vector2(cursorX, min.Y + ((height - textSize.Y) * 0.5f)), M3.U32(content), label);
 		}
 
-		if (hovered && !string.IsNullOrEmpty(tooltip))
+		M3Draw.FocusRing(min, max, rounding);
+
+		if (hovered)
 		{
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-			ImGui.SetTooltip(tooltip);
 		}
-		else if (hovered)
+
+		if (mouseOver)
 		{
-			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+			M3Tooltip.Show(tooltip);
 		}
 
 		return pressed;
 	}
 
+	private static readonly Dictionary<uint, float> _holdProgress = [];
+
+	// Fills while held and returns true once it's full, so a risky action can't fire from a stray click.
+	public static bool HoldButton(string id, string label, float seconds = 1f, M3ButtonStyle style = M3ButtonStyle.Danger, FontAwesomeIcon icon = FontAwesomeIcon.None, float? width = null, bool enabled = true, string? tooltip = null)
+	{
+		_ = Button(id, label, style, icon, width, enabled, tooltip ?? "Hold to confirm");
+		var key = ImGui.GetID(id);
+		var held = enabled && ImGui.IsItemActive();
+		var min = ImGui.GetItemRectMin();
+		var max = ImGui.GetItemRectMax();
+		var delta = ImGui.GetIO().DeltaTime;
+
+		// Below zero means it finished and waits for the button to be let go.
+		_holdProgress.TryGetValue(key, out var progress);
+		var done = false;
+		if (held && progress >= 0f)
+		{
+			progress += delta / MathF.Max(0.05f, seconds);
+			if (progress >= 1f)
+			{
+				done = true;
+				progress = -1f;
+			}
+		}
+		else if (!held)
+		{
+			progress = progress < 0f ? 0f : MathF.Max(0f, progress - (delta * 4f));
+		}
+
+		_holdProgress[key] = progress;
+
+		var shown = progress < 0f ? 1f : progress;
+		if (shown > 0f)
+		{
+			var content = ButtonColors(style, null).Content;
+			var drawList = ImGui.GetWindowDrawList();
+			drawList.PushClipRect(min, new Vector2(float.Lerp(min.X, max.X, shown), max.Y), true);
+			drawList.AddRectFilled(min, max, M3.U32(content, 0.22f), (max.Y - min.Y) * 0.5f);
+			drawList.PopClipRect();
+		}
+
+		return done;
+	}
+
 	public static float IconButtonSize => 36f * M3.Scale;
 
-	public static bool IconButton(string id, FontAwesomeIcon icon, string? tooltip = null, M3ButtonStyle style = M3ButtonStyle.Text, Vector4? tint = null, float? diameter = null)
+	public static bool IconButton(string id, FontAwesomeIcon icon, string? tooltip = null, M3ButtonStyle style = M3ButtonStyle.Text, Vector4? tint = null, float? diameter = null, bool enabled = true)
 	{
 		var s = M3.Scheme;
 		var size = Vector2.One * (diameter ?? IconButtonSize);
 
-		var pressed = ImGui.InvisibleButton(id, size);
-		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var held = ImGui.IsItemActive();
+		var pressed = ImGui.InvisibleButton(id, size) && enabled;
+		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var hovered = enabled && mouseOver;
+		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();
-		var center = (min + max) * 0.5f;
 		var drawList = ImGui.GetWindowDrawList();
 
 		var (container, content) = style switch
@@ -391,53 +550,68 @@ public static class M3Widgets
 			content = explicitTint;
 		}
 
-		if (container.W > 0f)
-		{
-			var fill = hovered || held ? M3.StateLayer(container, content, hovered, held) : container;
-			drawList.AddCircleFilled(center, size.X * 0.5f, M3.U32(fill), 32);
-		}
-		else if (hovered || held)
-		{
-			drawList.AddCircleFilled(center, size.X * 0.5f, M3.U32(content, held ? M3.StatePressed : M3.StateHover), 32);
-		}
-
-		if (style == M3ButtonStyle.Outlined)
-		{
-			drawList.AddCircle(center, size.X * 0.5f, M3.U32(s.Outline, 0.8f), 32, 1f * M3.Scale);
-		}
-
-		M3Draw.IconCentered(drawList, icon, min, max, content);
+		DrawIconButton(drawList, icon, min, max, container, content, style == M3ButtonStyle.Outlined, hovered, held, enabled);
 
 		if (hovered)
 		{
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-			if (!string.IsNullOrEmpty(tooltip))
-			{
-				ImGui.SetTooltip(tooltip);
-			}
+		}
+
+		if (mouseOver)
+		{
+			M3Tooltip.Show(tooltip);
 		}
 
 		return pressed;
 	}
 
-	public static bool IconToggle(string id, FontAwesomeIcon icon, ref bool selected, string? tooltip = null, M3ButtonStyle style = M3ButtonStyle.Text, FontAwesomeIcon selectedIcon = FontAwesomeIcon.None, float? diameter = null)
+	private static void DrawIconButton(ImDrawListPtr drawList, FontAwesomeIcon icon, Vector2 min, Vector2 max, Vector4 container, Vector4 content, bool outlined, bool hovered, bool held, bool enabled)
+	{
+		var s = M3.Scheme;
+		var center = (min + max) * 0.5f;
+		var radius = (max.X - min.X) * 0.5f;
+
+		if (!enabled)
+		{
+			container = container.W > 0f ? M3.Alpha(s.OnSurface, M3.DisabledContainer) : container;
+			content = M3.Alpha(s.OnSurface, M3.DisabledContent);
+		}
+
+		if (container.W > 0f)
+		{
+			var fill = hovered || held ? M3.StateLayer(container, content, hovered, held) : container;
+			drawList.AddCircleFilled(center, radius, M3.U32(fill), 32);
+		}
+		else if (hovered || held)
+		{
+			drawList.AddCircleFilled(center, radius, M3.U32(content, held ? M3.StatePressed : M3.StateHover), 32);
+		}
+
+		if (outlined)
+		{
+			drawList.AddCircle(center, radius, M3.U32(enabled ? s.Outline : s.OnSurface, enabled ? 0.8f : M3.DisabledContainer), 32, 1f * M3.Scale);
+		}
+
+		M3Draw.IconCentered(drawList, icon, min, max, content);
+		M3Draw.FocusRing(min, max, radius);
+	}
+
+	public static bool IconToggle(string id, FontAwesomeIcon icon, ref bool selected, string? tooltip = null, M3ButtonStyle style = M3ButtonStyle.Text, FontAwesomeIcon selectedIcon = FontAwesomeIcon.None, float? diameter = null, bool enabled = true)
 	{
 		var s = M3.Scheme;
 		var size = Vector2.One * (diameter ?? IconButtonSize);
 
-		var pressed = ImGui.InvisibleButton(id, size);
+		var pressed = ImGui.InvisibleButton(id, size) && enabled;
 		if (pressed)
 		{
 			selected = !selected;
 		}
 
-		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var held = ImGui.IsItemActive();
+		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var hovered = enabled && mouseOver;
+		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();
-		var center = (min + max) * 0.5f;
-		var radius = size.X * 0.5f;
-		var drawList = ImGui.GetWindowDrawList();
 
 		var (container, content) = (style, selected) switch
 		{
@@ -451,31 +625,17 @@ public static class M3Widgets
 			_ => (M3.Alpha(s.Surface, 0f), s.OnSurfaceVariant),
 		};
 
-		if (container.W > 0f)
-		{
-			var fill = hovered || held ? M3.StateLayer(container, content, hovered, held) : container;
-			drawList.AddCircleFilled(center, radius, M3.U32(fill), 32);
-		}
-		else if (hovered || held)
-		{
-			drawList.AddCircleFilled(center, radius, M3.U32(content, held ? M3.StatePressed : M3.StateHover), 32);
-		}
-
-		if (style == M3ButtonStyle.Outlined && !selected)
-		{
-			drawList.AddCircle(center, radius, M3.U32(s.Outline, 0.8f), 32, 1f * M3.Scale);
-		}
-
 		var glyph = selected && selectedIcon != FontAwesomeIcon.None ? selectedIcon : icon;
-		M3Draw.IconCentered(drawList, glyph, min, max, content);
+		DrawIconButton(ImGui.GetWindowDrawList(), glyph, min, max, container, content, style == M3ButtonStyle.Outlined && !selected, hovered, held, enabled);
 
 		if (hovered)
 		{
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-			if (!string.IsNullOrEmpty(tooltip))
-			{
-				ImGui.SetTooltip(tooltip);
-			}
+		}
+
+		if (mouseOver)
+		{
+			M3Tooltip.Show(tooltip);
 		}
 
 		return pressed;
@@ -659,14 +819,12 @@ public static class M3Widgets
 		var (sin, cos) = MathF.SinCos(angle);
 		Vector2 Turn(float px, float py) => center + new Vector2((px * cos) - (py * sin), (px * sin) + (py * cos));
 		drawList.AddTriangleFilled(Turn(0f, halfHeight), Turn(-halfWidth, -halfHeight), Turn(halfWidth, -halfHeight), M3.U32(content));
+		M3Draw.FocusRing(ImGui.GetItemRectMin(), ImGui.GetItemRectMax(), size.X * 0.5f);
 
 		if (hovered)
 		{
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-			if (!string.IsNullOrEmpty(tooltip))
-			{
-				ImGui.SetTooltip(tooltip);
-			}
+			M3Tooltip.Show(tooltip);
 		}
 
 		return pressed;
@@ -700,7 +858,7 @@ public static class M3Widgets
 	}
 
 	// A label font only changes the text; the buttons keep their height and icons.
-	public static int SegmentedButtons(string id, ReadOnlySpan<M3Segment> segments, int selectedIndex, float? width = null, ImFontPtr? labelFont = null)
+	public static int SegmentedButtons(string id, ReadOnlySpan<M3Segment> segments, int selectedIndex, float? width = null, ImFontPtr? labelFont = null, bool enabled = true)
 	{
 		if (segments.Length == 0)
 		{
@@ -726,15 +884,16 @@ public static class M3Widgets
 			var segmentMin = new Vector2(origin.X + (segmentWidth * i), origin.Y);
 
 			ImGui.SetCursorScreenPos(segmentMin);
-			if (ImGui.InvisibleButton($"##segment{i}", new Vector2(segmentWidth, height)) && !selected)
+			if (ImGui.InvisibleButton($"##segment{i}", new Vector2(segmentWidth, height)) && !selected && enabled)
 			{
 				result = i;
 			}
 
-			var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-			var held = ImGui.IsItemActive();
+			var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+			var hovered = enabled && mouseOver;
+			var held = enabled && ImGui.IsItemActive();
 			var segmentMax = segmentMin + new Vector2(segmentWidth, height);
-			var tone = segment.Accent ?? s.Primary;
+			var tone = enabled ? segment.Accent ?? s.Primary : M3.Alpha(s.OnSurface, M3.DisabledContent);
 
 			var corners = segments.Length == 1 ? ImDrawFlags.RoundCornersAll
 				: i == 0 ? ImDrawFlags.RoundCornersLeft
@@ -743,7 +902,8 @@ public static class M3Widgets
 
 			if (selected)
 			{
-				drawList.AddRectFilled(segmentMin, segmentMax, M3.U32(s.SecondaryContainer, 0.95f), rounding, corners);
+				drawList.AddRectFilled(segmentMin, segmentMax,
+					enabled ? M3.U32(s.SecondaryContainer, 0.95f) : M3.U32(s.OnSurface, M3.DisabledContainer), rounding, corners);
 			}
 
 			if (hovered || held)
@@ -753,7 +913,9 @@ public static class M3Widgets
 				ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
 			}
 
-			var content = selected ? tone : M3.Alpha(s.OnSurfaceVariant, hovered ? 1f : 0.85f);
+			var content = selected ? tone
+				: enabled ? M3.Alpha(s.OnSurfaceVariant, hovered ? 1f : 0.85f)
+				: M3.Alpha(s.OnSurface, M3.DisabledContent);
 			var iconWidth = segment.Icon == FontAwesomeIcon.None ? 0f : M3Draw.MeasureIcon(segment.Icon).X;
 			var gap = segment.Icon == FontAwesomeIcon.None ? 0f : 6f * scale;
 			var iconTop = segmentMin.Y + ((height - ImGui.GetTextLineHeight()) * 0.5f);
@@ -778,7 +940,9 @@ public static class M3Widgets
 					M3.U32(s.Outline, 0.55f), 1f * scale);
 			}
 
-			if (hovered && !string.IsNullOrEmpty(segment.Tooltip))
+			M3Draw.FocusRing(segmentMin, segmentMax, rounding);
+
+			if (mouseOver)
 			{
 				M3Tooltip.Show(segment.Tooltip);
 			}
@@ -798,13 +962,14 @@ public static class M3Widgets
 
 	public static float ChipHeight => M3.FitText(32f, 6f);
 
-	public static float ChipWidth(string label, FontAwesomeIcon icon = FontAwesomeIcon.None, FontAwesomeIcon trailingIcon = FontAwesomeIcon.None)
+	public static float ChipWidth(string label, FontAwesomeIcon icon = FontAwesomeIcon.None, FontAwesomeIcon trailingIcon = FontAwesomeIcon.None, IDalamudTextureWrap? texture = null)
 	{
 		var scale = M3.Scale;
 		var width = ImGui.CalcTextSize(label).X + (16f * scale * 2f);
-		if (icon != FontAwesomeIcon.None)
+		var iconWidth = IconSlotWidth(icon, texture);
+		if (iconWidth > 0f)
 		{
-			width += M3Draw.MeasureIcon(icon).X + (8f * scale);
+			width += iconWidth + (8f * scale);
 		}
 
 		if (trailingIcon != FontAwesomeIcon.None)
@@ -815,17 +980,18 @@ public static class M3Widgets
 		return width;
 	}
 
-	public static bool Chip(string id, string label, bool selected, FontAwesomeIcon icon = FontAwesomeIcon.None, string? tooltip = null, Vector4? accent = null, FontAwesomeIcon trailingIcon = FontAwesomeIcon.None)
+	public static bool Chip(string id, string label, bool selected, FontAwesomeIcon icon = FontAwesomeIcon.None, string? tooltip = null, Vector4? accent = null, FontAwesomeIcon trailingIcon = FontAwesomeIcon.None, bool enabled = true, IDalamudTextureWrap? texture = null)
 	{
 		var s = M3.Scheme;
 		var scale = M3.Scale;
 		var height = ChipHeight;
-		var size = new Vector2(ChipWidth(label, icon, trailingIcon), height);
+		var size = new Vector2(ChipWidth(label, icon, trailingIcon, texture), height);
 		var tone = accent ?? s.Primary;
 
-		var pressed = ImGui.InvisibleButton(id, size);
-		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var held = ImGui.IsItemActive();
+		var pressed = ImGui.InvisibleButton(id, size) && enabled;
+		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var hovered = enabled && mouseOver;
+		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();
 		var drawList = ImGui.GetWindowDrawList();
@@ -833,31 +999,32 @@ public static class M3Widgets
 
 		var container = selected ? s.SecondaryContainer : M3.Alpha(s.Surface, 0f);
 		var content = selected ? s.OnSecondaryContainer : s.OnSurfaceVariant;
-		if (hovered || held)
+		var outline = selected ? (Vector4?)null : M3.Alpha(s.Outline, 0.8f);
+		if (!enabled)
+		{
+			container = selected ? M3.Alpha(s.OnSurface, M3.DisabledContainer) : container;
+			content = M3.Alpha(s.OnSurface, M3.DisabledContent);
+			tone = content;
+			outline = selected ? null : M3.Alpha(s.OnSurface, M3.DisabledContainer);
+		}
+		else if (hovered || held)
 		{
 			container = container.W > 0f
 				? M3.StateLayer(container, content, hovered, held)
 				: M3.Alpha(s.OnSurface, held ? M3.StatePressed : M3.StateHover);
 		}
 
-		M3Draw.Container(drawList, min, max, container, rounding, selected ? null : M3.Alpha(s.Outline, 0.8f), 1f);
+		M3Draw.Container(drawList, min, max, container, rounding, outline, 1f);
 
-		var iconWidth = icon == FontAwesomeIcon.None ? 0f : M3Draw.MeasureIcon(icon).X;
-		var gap = icon == FontAwesomeIcon.None ? 0f : 8f * scale;
+		var iconWidth = IconSlotWidth(icon, texture);
+		var gap = iconWidth > 0f ? 8f * scale : 0f;
 		var trailingWidth = trailingIcon == FontAwesomeIcon.None ? 0f : M3Draw.MeasureIcon(trailingIcon).X + (8f * scale);
 		var textSize = ImGui.CalcTextSize(label);
 		var cursorX = min.X + ((size.X - (iconWidth + gap + textSize.X + trailingWidth)) * 0.5f);
 
-		if (icon != FontAwesomeIcon.None)
+		if (iconWidth > 0f)
 		{
-			using (ImRaii.PushFont(UiBuilder.IconFont))
-			{
-				var glyph = icon.ToIconString();
-				drawList.AddText(UiBuilder.IconFont, ImGui.GetFontSize(),
-					new Vector2(cursorX, min.Y + ((height - ImGui.CalcTextSize(glyph).Y) * 0.5f)),
-					M3.U32(selected ? tone : content), glyph);
-			}
-
+			DrawIconSlot(drawList, icon, texture, cursorX, min.Y, height, selected ? tone : content, enabled ? 1f : M3.DisabledContent);
 			cursorX += iconWidth + gap;
 		}
 
@@ -870,13 +1037,16 @@ public static class M3Widgets
 				new Vector2(cursorX + textSize.X + (8f * scale), min.Y + ((height - trailingSize.Y) * 0.5f)), content);
 		}
 
+		M3Draw.FocusRing(min, max, rounding);
+
 		if (hovered)
 		{
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-			if (!string.IsNullOrEmpty(tooltip))
-			{
-				ImGui.SetTooltip(tooltip);
-			}
+		}
+
+		if (mouseOver)
+		{
+			M3Tooltip.Show(tooltip);
 		}
 
 		return pressed;
@@ -938,9 +1108,14 @@ public static class M3Widgets
 		var textSize = ImGui.CalcTextSize(label);
 		drawList.AddText(new Vector2(cursorX, min.Y + ((size.Y - textSize.Y) * 0.5f)), M3.U32(M3.Scheme.OnSurface, 0.95f), label);
 
-		if (hovered && !string.IsNullOrEmpty(tooltip))
+		if (interactive)
 		{
-			ImGui.SetTooltip(tooltip);
+			M3Draw.FocusRing(min, max, rounding);
+		}
+
+		if (hovered)
+		{
+			M3Tooltip.Show(tooltip);
 		}
 
 		return clicked;
@@ -973,13 +1148,15 @@ public static class M3Widgets
 		var bodyHovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
 		var bodyHeld = ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
+		var max = min + new Vector2(width, height);
+		M3Draw.FocusRing(min, max, M3.ShapeSmall);
 
 		ImGui.SameLine(0f, 0f);
 		removed = ImGui.InvisibleButton($"{id}_remove", new Vector2(removeWidth, height));
 		var removeHovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
 		var removeHeld = ImGui.IsItemActive();
+		M3Draw.FocusRing(ImGui.GetItemRectMin(), ImGui.GetItemRectMax(), height * 0.5f);
 
-		var max = min + new Vector2(width, height);
 		var drawList = ImGui.GetWindowDrawList();
 		var rounding = M3.ShapeSmall;
 		var content = s.OnSurfaceVariant;
@@ -1022,11 +1199,11 @@ public static class M3Widgets
 
 		if (removeHovered)
 		{
-			ImGui.SetTooltip($"Remove {label}");
+			M3Tooltip.Show($"Remove {label}");
 		}
-		else if (bodyHovered && !string.IsNullOrEmpty(tooltip))
+		else if (bodyHovered)
 		{
-			ImGui.SetTooltip(tooltip);
+			M3Tooltip.Show(tooltip);
 		}
 
 		return pressed;
@@ -1268,42 +1445,104 @@ public static class M3Widgets
 			.Push(ImGuiCol.Text, new Vector4(0f, 0f, 0f, 0f), condition);
 	}
 
-	public static bool Slider(string id, ref float value, float min, float max, string displayValue, float width)
+	public static bool Slider(string id, ref float value, float min, float max, string displayValue, float width, bool logarithmic = false, bool enabled = true)
 	{
 		var scale = M3.Scale;
 		// Ctrl+click turns the slider into a text box, which must stay visible.
 		var editing = ImGuiP.TempInputIsActive(ImGui.GetID(id));
+		var flags = ImGuiSliderFlags.NoRoundToFormat | (logarithmic ? ImGuiSliderFlags.Logarithmic : ImGuiSliderFlags.None);
 		bool changed;
 
+		using (ImRaii.Disabled(!enabled))
 		using (PushInvisibleSliderChrome(!editing))
 		using (ImRaii.PushStyle(ImGuiStyleVar.FramePadding, new Vector2(editing ? 8f : 0f, 10f) * scale))
 		{
 			ImGui.SetNextItemWidth(width);
-			changed = ImGui.SliderFloat(id, ref value, min, max, "%.2f", ImGuiSliderFlags.NoRoundToFormat);
+			changed = ImGui.SliderFloat(id, ref value, min, max, "%.2f", flags);
 		}
 
-		DrawSliderVisual(value, min, max, displayValue, M3.Scheme, scale, editing);
+		// ImGui keeps a logarithmic slider clear of zero by this much, which depends on the format's decimals.
+		DrawSliderVisual(value, min, max, displayValue, M3.Scheme, scale, editing, logarithmic ? 0.01f : 0f, enabled);
 		return changed;
 	}
 
-	public static bool SliderInt(string id, ref int value, int min, int max, string displayValue, float width)
+	public static bool SliderInt(string id, ref int value, int min, int max, string displayValue, float width, bool logarithmic = false, bool enabled = true)
 	{
 		var scale = M3.Scale;
 		var editing = ImGuiP.TempInputIsActive(ImGui.GetID(id));
+		var flags = logarithmic ? ImGuiSliderFlags.Logarithmic : ImGuiSliderFlags.None;
 		bool changed;
 
+		using (ImRaii.Disabled(!enabled))
 		using (PushInvisibleSliderChrome(!editing))
 		using (ImRaii.PushStyle(ImGuiStyleVar.FramePadding, new Vector2(editing ? 8f : 0f, 10f) * scale))
 		{
 			ImGui.SetNextItemWidth(width);
-			changed = ImGui.SliderInt(id, ref value, min, max, "%d");
+			changed = ImGui.SliderInt(id, ref value, min, max, "%d", flags);
 		}
 
-		DrawSliderVisual(value, min, max, displayValue, M3.Scheme, scale, editing);
+		DrawSliderVisual(value, min, max, displayValue, M3.Scheme, scale, editing, logarithmic ? 0.1f : 0f, enabled);
 		return changed;
 	}
 
-	private static void DrawSliderVisual(float value, float min, float max, string displayValue, M3Scheme s, float scale, bool editing)
+	// The same mapping ImGui uses for a logarithmic grab, so the drawn handle stays under the mouse.
+	private static float LogFraction(float value, float min, float max, float epsilon, float usableWidth)
+	{
+		if (min == max)
+		{
+			return 0f;
+		}
+
+		var flipped = max < min;
+		if (flipped)
+		{
+			(min, max) = (max, min);
+		}
+
+		var clamped = Math.Clamp(value, min, max);
+		var minFudged = MathF.Abs(min) < epsilon ? (min < 0f ? -epsilon : epsilon) : min;
+		var maxFudged = MathF.Abs(max) < epsilon ? (max < 0f ? -epsilon : epsilon) : max;
+		if (min == 0f && max < 0f)
+		{
+			minFudged = -epsilon;
+		}
+		else if (max == 0f && min < 0f)
+		{
+			maxFudged = -epsilon;
+		}
+
+		float result;
+		if (clamped <= minFudged)
+		{
+			result = 0f;
+		}
+		else if (clamped >= maxFudged)
+		{
+			result = 1f;
+		}
+		else if (min * max < 0f)
+		{
+			var zero = -min / (max - min);
+			var deadzone = ImGui.GetStyle().LogSliderDeadzone * 0.5f / MathF.Max(usableWidth, 1f);
+			var left = zero - deadzone;
+			var right = zero + deadzone;
+			result = clamped == 0f ? zero
+				: clamped < 0f ? (1f - (MathF.Log(-clamped / epsilon) / MathF.Log(-minFudged / epsilon))) * left
+				: right + (MathF.Log(clamped / epsilon) / MathF.Log(maxFudged / epsilon) * (1f - right));
+		}
+		else if (min < 0f || max < 0f)
+		{
+			result = 1f - (MathF.Log(-clamped / -maxFudged) / MathF.Log(-minFudged / -maxFudged));
+		}
+		else
+		{
+			result = MathF.Log(clamped / minFudged) / MathF.Log(maxFudged / minFudged);
+		}
+
+		return flipped ? 1f - result : result;
+	}
+
+	private static void DrawSliderVisual(float value, float min, float max, string displayValue, M3Scheme s, float scale, bool editing, float logEpsilon, bool enabled)
 	{
 		var itemMin = ImGui.GetItemRectMin();
 		var itemMax = ImGui.GetItemRectMax();
@@ -1315,7 +1554,7 @@ public static class M3Widgets
 		if (hasReadout)
 		{
 			drawList.AddText(new Vector2(itemMax.X + (10f * scale), centerY - (textSize.Y * 0.5f)),
-				M3.U32(s.OnSurfaceVariant), displayValue);
+				M3.U32(s.OnSurfaceVariant, enabled ? 1f : M3.DisabledContent), displayValue);
 		}
 
 		if (editing)
@@ -1323,27 +1562,30 @@ public static class M3Widgets
 			return;
 		}
 
-		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var active = ImGui.IsItemActive();
+		var hovered = enabled && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var active = enabled && ImGui.IsItemActive();
 
 		var trackHeight = 4f * scale;
 		var handleRadius = 10f * scale;
 		var trackLeft = itemMin.X + handleRadius;
 		var trackRight = itemMax.X - handleRadius;
-		var fraction = max > min ? Math.Clamp((value - min) / (max - min), 0f, 1f) : 0f;
+		var fraction = logEpsilon > 0f
+			? LogFraction(value, min, max, logEpsilon, trackRight - trackLeft)
+			: max > min ? Math.Clamp((value - min) / (max - min), 0f, 1f) : 0f;
 		var handleX = float.Lerp(trackLeft, trackRight, fraction);
+		var accent = enabled ? s.Primary : M3.Alpha(s.OnSurface, M3.DisabledContent);
 
 		drawList.AddRectFilled(
 			new Vector2(trackLeft, centerY - (trackHeight * 0.5f)),
 			new Vector2(trackRight, centerY + (trackHeight * 0.5f)),
-			M3.U32(s.SurfaceContainerHighest), trackHeight);
+			enabled ? M3.U32(s.SurfaceContainerHighest) : M3.U32(s.OnSurface, M3.DisabledContainer), trackHeight);
 
 		if (handleX > trackLeft)
 		{
 			drawList.AddRectFilled(
 				new Vector2(trackLeft, centerY - (trackHeight * 0.5f)),
 				new Vector2(handleX, centerY + (trackHeight * 0.5f)),
-				M3.U32(s.Primary), trackHeight);
+				M3.U32(accent), trackHeight);
 		}
 
 		if (hovered || active)
@@ -1352,8 +1594,8 @@ public static class M3Widgets
 				M3.U32(s.Primary, active ? M3.StatePressed : M3.StateHover), 24);
 		}
 
-		drawList.AddCircleFilled(new Vector2(handleX, centerY), handleRadius, M3.U32(s.Primary), 24);
-		drawList.AddCircleFilled(new Vector2(handleX, centerY), handleRadius * 0.45f, M3.U32(s.OnPrimary, 0.9f), 16);
+		drawList.AddCircleFilled(new Vector2(handleX, centerY), handleRadius, M3.U32(accent), 24);
+		drawList.AddCircleFilled(new Vector2(handleX, centerY), handleRadius * 0.45f, M3.U32(enabled ? s.OnPrimary : s.Surface, 0.9f), 16);
 
 		if (hasReadout && active)
 		{
@@ -1457,45 +1699,151 @@ public static class M3Widgets
 			: text;
 	}
 
-	public static bool RowSwitch(string label, ref bool value, string? supporting = null)
+	public static bool RowSwitch(string label, ref bool value, string? supporting = null, bool enabled = true)
 	{
-		return RowSwitch(label, ref value, out _, supporting);
+		return RowSwitch(label, ref value, out _, supporting, enabled);
 	}
 
-	public static bool RowSwitch(string label, ref bool value, out bool hovered, string? supporting = null)
+	public static bool RowSwitch(string label, ref bool value, out bool hovered, string? supporting = null, bool enabled = true)
 	{
 		var (display, id) = SplitLabel(label);
-		var row = M3SettingRow.Begin(display, supporting, SwitchSize());
+		var row = M3SettingRow.Begin(display, supporting, SwitchSize(), disabled: !enabled);
 		hovered = row.Hovered;
 		ImGui.SetCursorScreenPos(row.ControlPosition);
-		var changed = Switch($"##{id}_switch", ref value);
+		var changed = Switch($"##{id}_switch", ref value, enabled);
 		M3SettingRow.End(row);
 		return changed;
 	}
 
-	public static bool RowDragFloat(string label, ref float value, float min, float max, string format, string? supporting = null)
+	public static bool RowDragFloat(string label, ref float value, float min, float max, string format, string? supporting = null, bool logarithmic = false, bool enabled = true)
 	{
 		var (display, id) = SplitLabel(label);
 		var trackWidth = 150f * M3.Scale;
 		var readout = FormatValue(format, value);
 		var controlSize = new Vector2(trackWidth + SliderValueGutter(FormatValue(format, max)), ButtonHeight);
 
-		var row = M3SettingRow.Begin(display, supporting, controlSize);
+		var row = M3SettingRow.Begin(display, supporting, controlSize, disabled: !enabled);
 		ImGui.SetCursorScreenPos(row.ControlPosition);
-		var changed = Slider($"##{id}_slider", ref value, min, max, readout, trackWidth);
+		var changed = Slider($"##{id}_slider", ref value, min, max, readout, trackWidth, logarithmic, enabled);
 		M3SettingRow.End(row);
 		return changed;
 	}
 
-	public static bool RowDragInt(string label, ref int value, int min, int max, string? supporting = null)
+	public static bool RowDragInt(string label, ref int value, int min, int max, string? supporting = null, bool logarithmic = false, bool enabled = true)
 	{
 		var (display, id) = SplitLabel(label);
 		var trackWidth = 150f * M3.Scale;
 		var controlSize = new Vector2(trackWidth + SliderValueGutter(max.ToString()), ButtonHeight);
 
-		var row = M3SettingRow.Begin(display, supporting, controlSize);
+		var row = M3SettingRow.Begin(display, supporting, controlSize, disabled: !enabled);
 		ImGui.SetCursorScreenPos(row.ControlPosition);
-		var changed = SliderInt($"##{id}_slider", ref value, min, max, value.ToString(), trackWidth);
+		var changed = SliderInt($"##{id}_slider", ref value, min, max, value.ToString(), trackWidth, logarithmic, enabled);
+		M3SettingRow.End(row);
+		return changed;
+	}
+
+	private static float RowComboWidth(float widestLabel)
+	{
+		var width = MathF.Max(160f * M3.Scale, MathF.Ceiling(widestLabel) + (ComboTextInset * 2f) + ComboChevronWidth + 1f);
+		return MathF.Min(width, MathF.Max(120f * M3.Scale, M3SettingRow.MaxControlWidth() * 0.6f));
+	}
+
+	public static bool RowCombo(string label, ref int index, IReadOnlyList<string> items, string? supporting = null, bool search = false, bool enabled = true)
+	{
+		var widest = 0f;
+		foreach (var item in items)
+		{
+			widest = MathF.Max(widest, ImGui.CalcTextSize(item).X);
+		}
+
+		var (display, id) = SplitLabel(label);
+		var width = RowComboWidth(widest);
+		var row = M3SettingRow.Begin(display, supporting, new Vector2(width, ComboHeight), disabled: !enabled);
+		ImGui.SetCursorScreenPos(row.ControlPosition);
+		var changed = Combo($"##{id}_combo", ref index, items, width, search: search, enabled: enabled);
+		M3SettingRow.End(row);
+		return changed;
+	}
+
+	public static bool RowCombo<T>(string label, ref T value, string? supporting = null, Func<T, string>? itemLabel = null, bool search = false, bool enabled = true)
+		where T : struct, Enum
+	{
+		var values = EnumValues<T>.All;
+		var widest = 0f;
+		foreach (var item in values)
+		{
+			widest = MathF.Max(widest, ImGui.CalcTextSize(itemLabel?.Invoke(item) ?? EnumLabel(item)).X);
+		}
+
+		var (display, id) = SplitLabel(label);
+		var width = RowComboWidth(widest);
+		var row = M3SettingRow.Begin(display, supporting, new Vector2(width, ComboHeight), disabled: !enabled);
+		ImGui.SetCursorScreenPos(row.ControlPosition);
+		var changed = Combo($"##{id}_combo", ref value, width, itemLabel, search, enabled);
+		M3SettingRow.End(row);
+		return changed;
+	}
+
+	// For code that only knows the enum's type at run time, such as a settings page built by reflection.
+	public static bool RowCombo(string label, Type enumType, ref Enum value, string? supporting = null, Func<Enum, string>? itemLabel = null, bool search = false, bool enabled = true)
+	{
+		var values = EnumValuesOf(enumType);
+		var widest = 0f;
+		foreach (var item in values)
+		{
+			widest = MathF.Max(widest, ImGui.CalcTextSize(itemLabel?.Invoke(item) ?? EnumLabel(item)).X);
+		}
+
+		var (display, id) = SplitLabel(label);
+		var width = RowComboWidth(widest);
+		var row = M3SettingRow.Begin(display, supporting, new Vector2(width, ComboHeight), disabled: !enabled);
+		ImGui.SetCursorScreenPos(row.ControlPosition);
+		var changed = Combo($"##{id}_combo", enumType, ref value, width, itemLabel, search, enabled);
+		M3SettingRow.End(row);
+		return changed;
+	}
+
+	public static bool RowColor(string label, ref Vector4 color, Vector4? defaultColor = null, string? supporting = null, bool alpha = true, bool enabled = true)
+	{
+		var (display, id) = SplitLabel(label);
+		var scale = M3.Scale;
+		var swatch = ColorSwatchSize;
+		var canReset = defaultColor is { } fallback && fallback != color;
+		var resetSize = 32f * scale;
+		var controlSize = new Vector2(swatch + (canReset ? M3.Space1 + resetSize : 0f), MathF.Max(swatch, resetSize));
+
+		var row = M3SettingRow.Begin(display, supporting, controlSize, disabled: !enabled);
+		var origin = row.ControlPosition;
+		ImGui.SetCursorScreenPos(origin + new Vector2(0f, (controlSize.Y - swatch) * 0.5f));
+		var changed = ColorSwatch($"##{id}_color", ref color, defaultColor, alpha, enabled);
+
+		if (canReset)
+		{
+			ImGui.SetCursorScreenPos(origin + new Vector2(swatch + M3.Space1, (controlSize.Y - resetSize) * 0.5f));
+			if (IconButton($"##{id}_reset", FontAwesomeIcon.Undo, "Reset to default", diameter: resetSize, enabled: enabled))
+			{
+				color = defaultColor!.Value;
+				changed = true;
+			}
+		}
+
+		M3SettingRow.End(row);
+		return changed;
+	}
+
+	public static bool RowText(string label, ref string text, string? hint = null, string? supporting = null, int maxLength = 256, bool enabled = true)
+	{
+		var (display, id) = SplitLabel(label);
+		var width = MathF.Min(240f * M3.Scale, M3SettingRow.MaxControlWidth() * 0.6f);
+
+		var row = M3SettingRow.Begin(display, supporting, new Vector2(width, M3TextField.Height), disabled: !enabled);
+		ImGui.SetCursorScreenPos(row.ControlPosition);
+		bool changed;
+		using (ImRaii.Disabled(!enabled))
+		{
+			changed = M3TextField.Draw($"##{id}_text", hint ?? string.Empty, ref text, width, maxLength);
+		}
+
 		M3SettingRow.End(row);
 		return changed;
 	}
@@ -1505,7 +1853,7 @@ public static class M3Widgets
 	#region Text fields
 
 	// Busy swaps the search icon for a spinner, for while the results it found are on screen.
-	public static bool SearchField(string id, string hint, ref string text, float width, int maxLength = 128, bool busy = false)
+	public static bool SearchField(string id, string hint, ref string text, float width, int maxLength = 128, bool busy = false, bool enabled = true)
 	{
 		var s = M3.Scheme;
 		var scale = M3.Scale;
@@ -1514,9 +1862,9 @@ public static class M3Widgets
 		var drawList = ImGui.GetWindowDrawList();
 		var min = origin;
 		var max = origin + new Vector2(width, height);
-		var hoveringField = ImGui.IsMouseHoveringRect(min, max);
+		var hoveringField = enabled && ImGui.IsMouseHoveringRect(min, max);
 
-		drawList.AddRectFilled(min, max, M3.U32(s.SurfaceContainerHigh, hoveringField ? 1f : 0.92f), height * 0.5f);
+		drawList.AddRectFilled(min, max, M3.U32(s.SurfaceContainerHigh, !enabled ? 0.5f : hoveringField ? 1f : 0.92f), height * 0.5f);
 
 		var iconPadding = 14f * scale;
 		var iconWidth = M3Draw.MeasureIcon(FontAwesomeIcon.Search).X;
@@ -1542,9 +1890,8 @@ public static class M3Widgets
 		ImGui.SetNextItemWidth(fieldWidth);
 
 		bool changed;
-		using (ImRaii.PushColor(ImGuiCol.FrameBg, new Vector4(0f, 0f, 0f, 0f))
-			.Push(ImGuiCol.FrameBgHovered, new Vector4(0f, 0f, 0f, 0f))
-			.Push(ImGuiCol.FrameBgActive, new Vector4(0f, 0f, 0f, 0f)))
+		using (ImRaii.Disabled(!enabled))
+		using (PushClearFrame())
 		{
 			changed = ImGui.InputTextWithHint(id, hint, ref text, maxLength, ImGuiInputTextFlags.AutoSelectAll);
 		}
@@ -1552,7 +1899,7 @@ public static class M3Widgets
 		if (hasText)
 		{
 			ImGui.SetCursorScreenPos(new Vector2(max.X - clearWidth - (6f * scale), min.Y + ((height - (26f * scale)) * 0.5f)));
-			if (IconButton($"{id}_clear", FontAwesomeIcon.Times, "Clear search", diameter: 26f * scale))
+			if (IconButton($"{id}_clear", FontAwesomeIcon.Times, "Clear search", diameter: 26f * scale, enabled: enabled))
 			{
 				text = string.Empty;
 				changed = true;
@@ -1567,7 +1914,7 @@ public static class M3Widgets
 	public static float TextFieldHeight => M3.FitText(48f, 12f);
 
 	// Pass an id starting with "##" to hide ImGui's own label.
-	public static bool TextField(string id, string label, ref string text, float width, int maxLength = 256, string? supporting = null, bool error = false, FontAwesomeIcon leadingIcon = FontAwesomeIcon.None, ImGuiInputTextFlags flags = ImGuiInputTextFlags.None)
+	public static bool TextField(string id, string label, ref string text, float width, int maxLength = 256, string? supporting = null, bool error = false, FontAwesomeIcon leadingIcon = FontAwesomeIcon.None, ImGuiInputTextFlags flags = ImGuiInputTextFlags.None, bool enabled = true)
 	{
 		var s = M3.Scheme;
 		var scale = M3.Scale;
@@ -1605,9 +1952,8 @@ public static class M3Widgets
 		ImGui.SetNextItemWidth(MathF.Max(24f * scale, textRight + framePadding - inputLeft));
 
 		bool changed;
-		using (ImRaii.PushColor(ImGuiCol.FrameBg, new Vector4(0f, 0f, 0f, 0f))
-			.Push(ImGuiCol.FrameBgHovered, new Vector4(0f, 0f, 0f, 0f))
-			.Push(ImGuiCol.FrameBgActive, new Vector4(0f, 0f, 0f, 0f)))
+		using (ImRaii.Disabled(!enabled))
+		using (PushClearFrame())
 		{
 			changed = ImGui.InputText(id, ref text, maxLength, flags);
 		}
@@ -1615,8 +1961,9 @@ public static class M3Widgets
 		var focused = ImGui.IsItemActive();
 		var floating = M3Motion.Approach($"{id}_label", focused || !string.IsNullOrEmpty(text) ? 1f : 0f, M3Motion.FastDuration);
 
-		var accent = error ? s.Error : focused ? s.Primary : hovered ? s.OnSurface : s.Outline;
-		var labelColor = error ? s.Error : focused ? s.Primary : s.OnSurfaceVariant;
+		var dim = enabled ? 1f : M3.DisabledContent;
+		var accent = M3.Alpha(error ? s.Error : focused ? s.Primary : hovered && enabled ? s.OnSurface : s.Outline, dim);
+		var labelColor = M3.Alpha(error ? s.Error : focused ? s.Primary : s.OnSurfaceVariant, dim);
 
 		var hasLabel = !string.IsNullOrEmpty(label);
 		var floatingX = min.X + paddingX;
@@ -1715,6 +2062,27 @@ public static class M3Widgets
 		}
 	}
 
+	public static float HelpMarkerWidth(FontAwesomeIcon icon = FontAwesomeIcon.InfoCircle)
+	{
+		return M3Draw.MeasureIcon(icon).X;
+	}
+
+	// A small icon that explains something on hover. It's as tall as a frame, to line up with controls and frame-aligned text.
+	public static void HelpMarker(string text, FontAwesomeIcon icon = FontAwesomeIcon.InfoCircle, Vector4? color = null)
+	{
+		var size = new Vector2(HelpMarkerWidth(icon), ImGui.GetFrameHeight());
+		ImGui.Dummy(size);
+		var min = ImGui.GetItemRectMin();
+		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled);
+		var tone = color ?? M3.Scheme.OnSurfaceVariant;
+
+		M3Draw.IconCentered(ImGui.GetWindowDrawList(), icon, min, min + size, M3.Alpha(tone, hovered ? 1f : 0.7f * tone.W));
+		if (hovered)
+		{
+			M3Tooltip.Show(text);
+		}
+	}
+
 	public static bool Banner(string id, string message, M3Severity severity, FontAwesomeIcon icon, string? actionLabel = null, string? tooltip = null)
 	{
 		return Banner(id, message, severity, icon, out _, actionLabel, tooltip);
@@ -1758,9 +2126,9 @@ public static class M3Widgets
 		ImGui.SetCursorScreenPos(new Vector2(min.X, max.Y));
 		ImGui.Dummy(new Vector2(width, 0f));
 
-		if (hovered && !string.IsNullOrEmpty(tooltip))
+		if (hovered)
 		{
-			ImGui.SetTooltip(tooltip);
+			M3Tooltip.Show(tooltip);
 		}
 
 		return clicked;
@@ -1823,66 +2191,144 @@ public static class M3Widgets
 	private static float ComboTextInset => 12f * M3.Scale;
 	private static float ComboChevronWidth => 24f * M3.Scale;
 
+	private static readonly Dictionary<uint, (int Count, float Widest)> _comboWidths = [];
+	private static readonly Dictionary<uint, string> _comboQueries = [];
+	private static readonly List<int> _comboMatches = [];
+
 	public static float ComboWidthFor(string label)
 	{
 		return MathF.Ceiling(ImGui.CalcTextSize(label).X) + (ComboTextInset * 2f) + ComboChevronWidth + 1f;
 	}
 
-	public static bool Combo(string id, ref int index, IReadOnlyList<string> items, float width, string? emptyText = null)
+	public static bool Combo(string id, ref int index, IReadOnlyList<string> items, float width, string? emptyText = null, bool search = false, bool enabled = true, string? tooltip = null)
 	{
-		var s = M3.Scheme;
+		return Combo(id, ref index, items.Count, i => items[i], width, emptyText, search, enabled, tooltip);
+	}
+
+	// Search adds a filter box to the menu. Only the rows in view are drawn, so a list of thousands stays cheap.
+	public static bool Combo(string id, ref int index, int count, Func<int, string> itemLabel, float width, string? emptyText = null, bool search = false, bool enabled = true, string? tooltip = null,
+		Func<int, string?>? itemTooltip = null, Func<int, bool>? itemEnabled = null, Func<int, bool>? itemVisible = null)
+	{
 		var scale = M3.Scale;
-		var height = ComboHeight;
+		var label = index >= 0 && index < count ? itemLabel(index) : emptyText ?? string.Empty;
 		var popupId = $"{id}_menu";
+		var key = ImGui.GetID(popupId);
 
-		var clicked = ImGui.InvisibleButton(id, new Vector2(width, height));
-		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var held = ImGui.IsItemActive();
-		var open = ImGui.IsPopupOpen(popupId);
-		var min = ImGui.GetItemRectMin();
-		var max = ImGui.GetItemRectMax();
-		var drawList = ImGui.GetWindowDrawList();
-		var rounding = M3.ShapeSmall;
-
-		var fill = M3.Alpha(s.SurfaceContainerHighest, 0.55f);
-		if (hovered || held)
-		{
-			fill = M3.StateLayer(fill, s.OnSurface, hovered, held);
-		}
-
-		drawList.AddRectFilled(min, max, M3.U32(fill), rounding);
-		drawList.AddRect(min, max, M3.U32(open ? s.Primary : s.Outline, open ? 1f : 0.75f), rounding, ImDrawFlags.None, (open ? 2f : 1f) * scale);
-
-		var label = index >= 0 && index < items.Count ? items[index] : emptyText ?? string.Empty;
-		var textWidth = MathF.Max(8f * scale, width - (ComboTextInset * 2f) - ComboChevronWidth);
-		var display = M3Navigation.Truncate(label, textWidth);
-		var textSize = ImGui.CalcTextSize(display);
-		drawList.AddText(new Vector2(min.X + ComboTextInset, min.Y + ((height - textSize.Y) * 0.5f)), M3.U32(s.OnSurface, 0.95f), display);
-
-		var chevronCenter = new Vector2(max.X - (16f * scale), min.Y + (height * 0.5f));
-		var arm = 4.5f * scale;
-		var chevronColor = M3.U32(s.OnSurfaceVariant, hovered || open ? 1f : 0.8f);
-		drawList.AddLine(chevronCenter + new Vector2(-arm, -arm * 0.5f), chevronCenter + new Vector2(0f, arm * 0.6f), chevronColor, 2f * scale);
-		drawList.AddLine(chevronCenter + new Vector2(0f, arm * 0.6f), chevronCenter + new Vector2(arm, -arm * 0.5f), chevronColor, 2f * scale);
-
-		if (hovered)
-		{
-			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-		}
-
-		if (clicked)
+		var opening = ComboField(id, popupId, label, width, enabled, tooltip);
+		if (opening)
 		{
 			ImGui.OpenPopup(popupId);
 		}
 
-		var changed = false;
-		ImGui.SetNextWindowSizeConstraints(new Vector2(MathF.Max(width, 160f * scale), 0f), new Vector2(float.MaxValue, 420f * scale));
-		using var popup = ImRaii.Popup(popupId);
-		if (popup)
+		// The menu fits its widest item. Measured once as it opens, since long lists make that slow to do every frame.
+		var popupWidth = MathF.Max(width, 160f * scale);
+		if (opening || ImGui.IsPopupOpen(popupId))
 		{
-			for (var i = 0; i < items.Count; i++)
+			if (opening || !_comboWidths.TryGetValue(key, out var measured) || measured.Count != count)
 			{
-				if (MenuItem($"{popupId}_{i}", items[i], i == index))
+				var widest = 0f;
+				for (var i = 0; i < count; i++)
+				{
+					widest = MathF.Max(widest, ImGui.CalcTextSize(itemLabel(i)).X);
+				}
+
+				measured = (count, widest);
+				_comboWidths[key] = measured;
+			}
+
+			popupWidth = MathF.Max(popupWidth, measured.Widest + (56f * scale));
+		}
+
+		popupWidth = MathF.Min(popupWidth, 560f * scale);
+		ImGui.SetNextWindowSizeConstraints(new Vector2(popupWidth, 0f), new Vector2(popupWidth, 460f * scale));
+		using var menu = M3Menu.Begin(popupId);
+		if (!menu.IsOpen)
+		{
+			return false;
+		}
+
+		var query = string.Empty;
+		var pickFirst = false;
+		if (search)
+		{
+			_ = _comboQueries.TryGetValue(key, out query);
+			query ??= string.Empty;
+			if (ImGui.IsWindowAppearing())
+			{
+				query = string.Empty;
+				ImGui.SetKeyboardFocusHere();
+			}
+
+			// Enter ends typing within the field's own call, so check whether it's being typed in before drawing it.
+			var typing = ImGuiP.GetActiveID() == ImGui.GetID("##search");
+			_ = SearchField("##search", "Search", ref query, ImGui.GetContentRegionAvail().X);
+			pickFirst = typing && (ImGui.IsKeyPressed(ImGuiKey.Enter) || ImGui.IsKeyPressed(ImGuiKey.KeypadEnter));
+			_comboQueries[key] = query;
+			ImGui.Dummy(new Vector2(0f, M3.Space1));
+		}
+
+		_comboMatches.Clear();
+		for (var i = 0; i < count; i++)
+		{
+			if (itemVisible?.Invoke(i) == false)
+			{
+				continue;
+			}
+
+			if (query.Length > 0 && !itemLabel(i).Contains(query, StringComparison.OrdinalIgnoreCase))
+			{
+				continue;
+			}
+
+			_comboMatches.Add(i);
+		}
+
+		if (_comboMatches.Count == 0)
+		{
+			M3Text.Draw(query.Length > 0 ? "No matches" : "Nothing to pick", M3TextStyle.Muted);
+			return false;
+		}
+
+		var changed = false;
+		if (pickFirst)
+		{
+			foreach (var match in _comboMatches)
+			{
+				if (itemEnabled?.Invoke(match) != false)
+				{
+					index = match;
+					changed = true;
+					ImGui.CloseCurrentPopup();
+					return true;
+				}
+			}
+		}
+
+		var rowHeight = MenuItemHeight;
+		var listHeight = MathF.Min(_comboMatches.Count * rowHeight, 360f * scale);
+		using var list = ImRaii.Child("##items", new Vector2(0f, listHeight), false);
+		if (!list)
+		{
+			return false;
+		}
+
+		if (ImGui.IsWindowAppearing() && index >= 0)
+		{
+			var row = _comboMatches.IndexOf(index);
+			if (row >= 0)
+			{
+				ImGui.SetScrollY(MathF.Max(0f, (row - 2) * rowHeight));
+			}
+		}
+
+		var clipper = ImGui.ImGuiListClipper();
+		clipper.Begin(_comboMatches.Count, rowHeight);
+		while (clipper.Step())
+		{
+			for (var row = clipper.DisplayStart; row < clipper.DisplayEnd; row++)
+			{
+				var i = _comboMatches[row];
+				if (MenuItemCore($"##item{i}", itemLabel(i), i == index, FontAwesomeIcon.None, itemEnabled?.Invoke(i) ?? true, null, itemTooltip?.Invoke(i), null, true))
 				{
 					index = i;
 					changed = true;
@@ -1891,50 +2337,242 @@ public static class M3Widgets
 			}
 		}
 
+		clipper.End();
+		clipper.Destroy();
 		return changed;
 	}
 
-	public static bool MenuItem(string id, string label, bool selected, FontAwesomeIcon icon = FontAwesomeIcon.None)
+	public static bool Combo<T>(string id, ref T value, float width, Func<T, string>? itemLabel = null, bool search = false, bool enabled = true, string? tooltip = null,
+		Func<T, string?>? itemTooltip = null, Func<T, bool>? itemVisible = null)
+		where T : struct, Enum
+	{
+		var values = EnumValues<T>.All;
+		var labels = itemLabel ?? (static item => EnumLabel(item));
+		var index = Array.IndexOf(values, value);
+		if (!Combo(id, ref index, values.Length, i => labels(values[i]), width, labels(value), search, enabled, tooltip,
+			itemTooltip == null ? null : i => itemTooltip(values[i]),
+			null,
+			itemVisible == null ? null : i => itemVisible(values[i])))
+		{
+			return false;
+		}
+
+		value = values[index];
+		return true;
+	}
+
+	// For code that only knows the enum's type at run time, such as a settings page built by reflection.
+	public static bool Combo(string id, Type enumType, ref Enum value, float width, Func<Enum, string>? itemLabel = null, bool search = false, bool enabled = true, string? tooltip = null)
+	{
+		var values = EnumValuesOf(enumType);
+		var labels = itemLabel ?? EnumLabel;
+		var index = Array.IndexOf(values, value);
+		if (!Combo(id, ref index, values.Length, i => labels(values[i]), width, labels(value), search, enabled, tooltip))
+		{
+			return false;
+		}
+
+		value = values[index];
+		return true;
+	}
+
+	private static bool ComboField(string id, string popupId, string label, float width, bool enabled, string? tooltip)
 	{
 		var s = M3.Scheme;
 		var scale = M3.Scale;
-		var height = M3.FitText(34f, 7f);
-		var checkWidth = 24f * scale;
-		var textSize = ImGui.CalcTextSize(label);
-		var width = MathF.Max(ImGui.GetContentRegionAvail().X, checkWidth + textSize.X + (24f * scale));
+		var height = ComboHeight;
 
-		var pressed = ImGui.InvisibleButton(id, new Vector2(width, height));
-		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var held = ImGui.IsItemActive();
+		var clicked = ImGui.InvisibleButton(id, new Vector2(width, height)) && enabled;
+		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var hovered = enabled && mouseOver;
+		var held = enabled && ImGui.IsItemActive();
+		var open = ImGui.IsPopupOpen(popupId);
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();
 		var drawList = ImGui.GetWindowDrawList();
+		var rounding = M3.ShapeSmall;
+		var dim = enabled ? 1f : M3.DisabledContent;
 
-		if (selected)
-		{
-			drawList.AddRectFilled(min, max, M3.U32(s.SecondaryContainer, 0.8f), M3.ShapeSmall);
-		}
-
+		var fill = M3.Alpha(s.SurfaceContainerHighest, enabled ? 0.55f : 0.25f);
 		if (hovered || held)
 		{
-			drawList.AddRectFilled(min, max, M3.U32(s.OnSurface, held ? M3.StatePressed : M3.StateHover), M3.ShapeSmall);
+			fill = M3.StateLayer(fill, s.OnSurface, hovered, held);
+		}
+
+		drawList.AddRectFilled(min, max, M3.U32(fill), rounding);
+		drawList.AddRect(min, max, M3.U32(open ? s.Primary : s.Outline, (open ? 1f : 0.75f) * dim), rounding, ImDrawFlags.None, (open ? 2f : 1f) * scale);
+
+		var textWidth = MathF.Max(8f * scale, width - (ComboTextInset * 2f) - ComboChevronWidth);
+		var display = M3Navigation.Truncate(label, textWidth);
+		var textSize = ImGui.CalcTextSize(display);
+		drawList.AddText(new Vector2(min.X + ComboTextInset, min.Y + ((height - textSize.Y) * 0.5f)), M3.U32(s.OnSurface, 0.95f * dim), display);
+
+		var chevronCenter = new Vector2(max.X - (16f * scale), min.Y + (height * 0.5f));
+		var arm = 4.5f * scale;
+		var chevronColor = M3.U32(s.OnSurfaceVariant, (hovered || open ? 1f : 0.8f) * dim);
+		drawList.AddLine(chevronCenter + new Vector2(-arm, -arm * 0.5f), chevronCenter + new Vector2(0f, arm * 0.6f), chevronColor, 2f * scale);
+		drawList.AddLine(chevronCenter + new Vector2(0f, arm * 0.6f), chevronCenter + new Vector2(arm, -arm * 0.5f), chevronColor, 2f * scale);
+		M3Draw.FocusRing(min, max, rounding);
+
+		if (hovered)
+		{
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
 		}
 
-		if (selected)
+		if (mouseOver)
 		{
-			M3Draw.Icon(drawList, FontAwesomeIcon.Check,
-				new Vector2(min.X + (8f * scale), min.Y + ((height - ImGui.GetTextLineHeight()) * 0.5f)), s.Primary);
-		}
-		else if (icon != FontAwesomeIcon.None)
-		{
-			M3Draw.Icon(drawList, icon,
-				new Vector2(min.X + (8f * scale), min.Y + ((height - ImGui.GetTextLineHeight()) * 0.5f)), s.OnSurfaceVariant);
+			M3Tooltip.Show(tooltip ?? (display != label ? label : null));
 		}
 
-		drawList.AddText(
-			new Vector2(min.X + checkWidth + (8f * scale), min.Y + ((height - textSize.Y) * 0.5f)),
-			M3.U32(selected ? s.OnSecondaryContainer : s.OnSurface, 0.95f), label);
+		return clicked;
+	}
+
+	private static class EnumValues<T> where T : struct, Enum
+	{
+		public static readonly T[] All = Enum.GetValues<T>();
+	}
+
+	private static readonly Dictionary<Type, Enum[]> _enumValues = [];
+	private static readonly Dictionary<Enum, string> _enumLabels = [];
+
+	private static Enum[] EnumValuesOf(Type type)
+	{
+		if (!_enumValues.TryGetValue(type, out var values))
+		{
+			var raw = Enum.GetValues(type);
+			values = new Enum[raw.Length];
+			for (var i = 0; i < raw.Length; i++)
+			{
+				values[i] = (Enum)raw.GetValue(i)!;
+			}
+
+			_enumValues[type] = values;
+		}
+
+		return values;
+	}
+
+	// The value's name with its words spaced out, so LowestHp reads "Lowest Hp" and Phase2 reads "Phase 2".
+	public static string EnumLabel(Enum value)
+	{
+		if (_enumLabels.TryGetValue(value, out var cached))
+		{
+			return cached;
+		}
+
+		var name = value.ToString();
+		var builder = new System.Text.StringBuilder(name.Length + 4);
+		for (var i = 0; i < name.Length; i++)
+		{
+			var c = name[i];
+			if (c == '_')
+			{
+				builder.Append(' ');
+				continue;
+			}
+
+			if (i > 0 && builder.Length > 0 && builder[^1] != ' ')
+			{
+				var previous = name[i - 1];
+				var nextIsLower = i + 1 < name.Length && char.IsLower(name[i + 1]);
+				var wordStart = char.IsUpper(c) && (char.IsLower(previous) || char.IsDigit(previous) || (char.IsUpper(previous) && nextIsLower));
+				var numberStart = char.IsDigit(c) && char.IsLetter(previous);
+				if (wordStart || numberStart)
+				{
+					builder.Append(' ');
+				}
+			}
+
+			builder.Append(c);
+		}
+
+		var label = builder.ToString();
+		_enumLabels[value] = label;
+		return label;
+	}
+
+	public static float MenuItemHeight => M3.FitText(34f, 7f);
+
+	public static bool MenuItem(string id, string label, bool selected, FontAwesomeIcon icon = FontAwesomeIcon.None, bool enabled = true, string? shortcut = null, string? tooltip = null, IDalamudTextureWrap? texture = null)
+	{
+		return MenuItemCore(id, label, selected, icon, enabled, shortcut, tooltip, texture, false);
+	}
+
+	// Fit keeps the row inside the menu and shortens a long label, for menus of a fixed width.
+	internal static bool MenuItemCore(string id, string label, bool selected, FontAwesomeIcon icon, bool enabled, string? shortcut, string? tooltip, IDalamudTextureWrap? texture, bool fit,
+		bool submenu = false, bool open = false)
+	{
+		var s = M3.Scheme;
+		var scale = M3.Scale;
+		var height = MenuItemHeight;
+		var leadWidth = MathF.Max(24f * scale, texture != null ? TextureIconSize + (4f * scale) : 0f);
+		var shortcutWidth = submenu ? 28f * scale
+			: string.IsNullOrEmpty(shortcut) ? 0f : ImGui.CalcTextSize(shortcut).X + (16f * scale);
+		var available = ImGui.GetContentRegionAvail().X;
+		var needed = leadWidth + (8f * scale) + ImGui.CalcTextSize(label).X + shortcutWidth + (16f * scale);
+		var width = fit ? MathF.Max(1f, available) : MathF.Max(available, needed);
+
+		var pressed = ImGui.InvisibleButton(id, new Vector2(width, height)) && enabled;
+		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var hovered = enabled && mouseOver;
+		var held = enabled && ImGui.IsItemActive();
+		var min = ImGui.GetItemRectMin();
+		var max = ImGui.GetItemRectMax();
+		var drawList = ImGui.GetWindowDrawList();
+		var dim = enabled ? 1f : M3.DisabledContent;
+
+		if (selected)
+		{
+			drawList.AddRectFilled(min, max, M3.U32(s.SecondaryContainer, 0.8f * dim), M3.ShapeSmall);
+		}
+
+		if (hovered || held || open)
+		{
+			drawList.AddRectFilled(min, max, M3.U32(s.OnSurface, held ? M3.StatePressed : M3.StateHover), M3.ShapeSmall);
+		}
+
+		if (hovered)
+		{
+			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+		}
+
+		var leadX = min.X + (8f * scale);
+		if (selected)
+		{
+			DrawIconSlot(drawList, FontAwesomeIcon.Check, null, leadX, min.Y, height, M3.Alpha(s.Primary, dim));
+		}
+		else
+		{
+			DrawIconSlot(drawList, icon, texture, leadX, min.Y, height, M3.Alpha(s.OnSurfaceVariant, dim), dim);
+		}
+
+		var textX = min.X + leadWidth + (8f * scale);
+		var room = max.X - textX - shortcutWidth - (8f * scale);
+		var display = fit ? M3Navigation.Truncate(label, room) : label;
+		var textSize = ImGui.CalcTextSize(display);
+		drawList.AddText(new Vector2(textX, min.Y + ((height - textSize.Y) * 0.5f)),
+			M3.U32(selected ? s.OnSecondaryContainer : s.OnSurface, 0.95f * dim), display);
+
+		if (submenu)
+		{
+			var chevronSize = M3Draw.MeasureIcon(FontAwesomeIcon.ChevronRight);
+			M3Draw.IconCentered(drawList, FontAwesomeIcon.ChevronRight,
+				new Vector2(max.X - (12f * scale) - chevronSize.X, min.Y), new Vector2(max.X - (12f * scale), max.Y),
+				M3.Alpha(s.OnSurfaceVariant, dim), 0.8f);
+		}
+		else if (!string.IsNullOrEmpty(shortcut))
+		{
+			var shortcutSize = ImGui.CalcTextSize(shortcut);
+			drawList.AddText(new Vector2(max.X - (12f * scale) - shortcutSize.X, min.Y + ((height - shortcutSize.Y) * 0.5f)),
+				M3.U32(s.OnSurfaceVariant, 0.85f * dim), shortcut);
+		}
+
+		M3Draw.FocusRing(min, max, M3.ShapeSmall);
+
+		if (mouseOver)
+		{
+			M3Tooltip.Show(tooltip ?? (display != label ? label : null));
+		}
 
 		return pressed;
 	}
@@ -1943,24 +2581,44 @@ public static class M3Widgets
 
 	#region Misc
 
-	public static bool ColorSwatch(string id, ref Vector4 color)
+	public static float ColorSwatchSize => 28f * M3.Scale;
+
+	// With a default colour, the picker gets a reset button. Alpha false hides the alpha bar and keeps the colour opaque.
+	public static bool ColorSwatch(string id, ref Vector4 color, Vector4? defaultColor = null, bool alpha = true, bool enabled = true, string? tooltip = null)
 	{
 		var s = M3.Scheme;
 		var scale = M3.Scale;
-		var diameter = 28f * scale;
+		var diameter = ColorSwatchSize;
+		var radius = diameter * 0.5f;
 
-		var clicked = ImGui.InvisibleButton(id, Vector2.One * diameter);
-		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var clicked = ImGui.InvisibleButton(id, Vector2.One * diameter) && enabled;
+		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var hovered = enabled && mouseOver;
 		var min = ImGui.GetItemRectMin();
-		var center = min + (Vector2.One * diameter * 0.5f);
+		var center = min + (Vector2.One * radius);
 		var drawList = ImGui.GetWindowDrawList();
+		var dim = enabled ? 1f : M3.DisabledContent;
 
-		drawList.AddCircleFilled(center, diameter * 0.5f, M3.U32(color with { W = 1f }), 32);
-		drawList.AddCircle(center, diameter * 0.5f, M3.U32(s.Outline, hovered ? 1f : 0.6f), 32, 1.5f * scale);
+		if (alpha && color.W < 0.999f)
+		{
+			drawList.AddCircleFilled(center, radius, M3.U32(s.SurfaceContainerHighest, dim), 32);
+			drawList.PathArcTo(center, radius, MathF.PI * 0.5f, MathF.PI * 1.5f, 16);
+			drawList.PathFillConvex(M3.U32(s.OnSurfaceVariant, 0.55f * dim));
+		}
+
+		var shown = alpha ? color : color with { W = 1f };
+		drawList.AddCircleFilled(center, radius, M3.U32(shown with { W = shown.W * dim }), 32);
+		drawList.AddCircle(center, radius, M3.U32(s.Outline, (hovered ? 1f : 0.6f) * dim), 32, 1.5f * scale);
+		M3Draw.FocusRing(min, min + (Vector2.One * diameter), radius);
 
 		if (hovered)
 		{
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+		}
+
+		if (mouseOver)
+		{
+			M3Tooltip.Show(tooltip);
 		}
 
 		var popupId = $"{id}_picker";
@@ -1971,12 +2629,74 @@ public static class M3Widgets
 
 		var changed = false;
 		using var popup = ImRaii.Popup(popupId);
-		if (popup)
+		if (!popup)
 		{
-			changed = ImGui.ColorPicker4($"##{popupId}_picker", ref color, ImGuiColorEditFlags.AlphaBar);
+			return false;
+		}
+
+		var flags = alpha ? ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf : ImGuiColorEditFlags.NoAlpha;
+		changed = ImGui.ColorPicker4($"##{popupId}_picker", ref color, flags);
+
+		var hex = HexOf(color, alpha);
+		ImGui.SetNextItemWidth(120f * scale);
+		if (ImGui.InputText($"##{popupId}_hex", ref hex, 10) && TryParseHex(hex, out var parsed))
+		{
+			color = alpha ? parsed : parsed with { W = color.W };
+			changed = true;
+		}
+
+		if (defaultColor is { } fallback)
+		{
+			ImGui.SameLine(0f, M3.Space2);
+			if (Button($"##{popupId}_reset", "Reset", M3ButtonStyle.Text, FontAwesomeIcon.Undo, enabled: fallback != color))
+			{
+				color = fallback;
+				changed = true;
+			}
 		}
 
 		return changed;
+	}
+
+	private static string HexOf(Vector4 color, bool alpha)
+	{
+		static int Channel(float value)
+		{
+			return (int)MathF.Round(Math.Clamp(value, 0f, 1f) * 255f);
+		}
+
+		var rgb = $"#{Channel(color.X):X2}{Channel(color.Y):X2}{Channel(color.Z):X2}";
+		return alpha ? $"{rgb}{Channel(color.W):X2}" : rgb;
+	}
+
+	private static bool TryParseHex(string text, out Vector4 color)
+	{
+		color = default;
+		var digits = text.Trim().TrimStart('#');
+		if ((digits.Length != 6 && digits.Length != 8) || !uint.TryParse(digits, System.Globalization.NumberStyles.HexNumber, null, out var value))
+		{
+			return false;
+		}
+
+		if (digits.Length == 6)
+		{
+			value = (value << 8) | 0xFF;
+		}
+
+		color = new Vector4(((value >> 24) & 0xFF) / 255f, ((value >> 16) & 0xFF) / 255f, ((value >> 8) & 0xFF) / 255f, (value & 0xFF) / 255f);
+		return true;
+	}
+
+	internal static void Reset()
+	{
+		_comboQueries.Clear();
+		_comboMatches.Clear();
+		_comboWidths.Clear();
+		_holdProgress.Clear();
+		_enumLabels.Clear();
+		_enumValues.Clear();
+		ResetHotkeys();
+		ResetReorder();
 	}
 
 	#endregion

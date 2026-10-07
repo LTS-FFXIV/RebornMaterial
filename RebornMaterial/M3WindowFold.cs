@@ -23,6 +23,7 @@ public sealed class M3WindowFold
 	private Vector2 _openPadding;
 	private float _rounding;
 	private bool _stylePushed;
+	private bool _pendingMinimize;
 
 	public bool IsMinimized => _minimized;
 
@@ -47,6 +48,7 @@ public sealed class M3WindowFold
 
 	public void Restore()
 	{
+		_pendingMinimize = false;
 		if (!_minimized)
 		{
 			return;
@@ -58,6 +60,24 @@ public sealed class M3WindowFold
 		}
 
 		_minimized = false;
+	}
+
+	// Folds the window from code. Before the window has drawn once, it folds on its first frame instead.
+	public void Minimize()
+	{
+		if (_minimized)
+		{
+			return;
+		}
+
+		if (_windowSize == Vector2.Zero)
+		{
+			_pendingMinimize = true;
+			return;
+		}
+
+		var inset = AnchorInset;
+		Toggle(new Vector2(_windowPos.X + _windowSize.X - inset.X, _windowPos.Y + inset.Y));
 	}
 
 	public void Reset()
@@ -140,6 +160,12 @@ public sealed class M3WindowFold
 		PopStyle();
 		_windowPos = ImGui.GetWindowPos();
 		_windowSize = ImGui.GetWindowSize();
+
+		if (_pendingMinimize)
+		{
+			_pendingMinimize = false;
+			Minimize();
+		}
 	}
 
 	public (Vector2 Pos, Vector2 Size) OpenRect()
