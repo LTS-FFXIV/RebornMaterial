@@ -44,7 +44,8 @@ public sealed class M3WindowFold
 
 	public float Rounding => _rounding;
 
-	private Vector2 AnchorInset => new(_openPadding.X, _openPadding.Y + BarTop);
+	// ImGui truncates window positions and sizes, so anchors stay on whole pixels or each fold drifts the window.
+	private Vector2 AnchorInset => Vector2.Round(new Vector2(_openPadding.X, _openPadding.Y + BarTop));
 
 	public void Restore()
 	{
@@ -122,11 +123,12 @@ public sealed class M3WindowFold
 		var barSize = M3Widgets.WindowActionsSize(actionCount, brand, folded);
 		var anchor = Vector2.Lerp(_anchorOpen, _anchorFolded, folded);
 		var inset = AnchorInset * (1f - folded);
-		var size = Vector2.Lerp(_restoreSize, barSize, folded);
+		var size = Vector2.Round(Vector2.Lerp(_restoreSize, barSize, folded));
 
-		window.Position = resting ? null : new Vector2(anchor.X + inset.X - size.X, anchor.Y - inset.Y);
+		window.Position = resting ? null : Vector2.Round(new Vector2(anchor.X + inset.X - size.X, anchor.Y - inset.Y));
 		window.PositionCondition = ImGuiCond.Always;
-		window.Size = size / ImGuiHelpers.GlobalScale;
+		// The half pixel stops Dalamud's GlobalScale round trip from truncating a pixel away.
+		window.Size = (size + new Vector2(0.5f)) / ImGuiHelpers.GlobalScale;
 		window.SizeCondition = ImGuiCond.Always;
 		window.SizeConstraints = new WindowSizeConstraints()
 		{
