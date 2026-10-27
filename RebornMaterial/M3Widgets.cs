@@ -1479,7 +1479,7 @@ public static partial class M3Widgets
 		var scale = M3.Scale;
 		// Ctrl+click turns the slider into a text box, which must stay visible.
 		var editing = ImGuiP.TempInputIsActive(ImGui.GetID(id));
-		var flags = ImGuiSliderFlags.NoRoundToFormat | (logarithmic ? ImGuiSliderFlags.Logarithmic : ImGuiSliderFlags.None);
+		var flags = ImGuiSliderFlags.AlwaysClamp | ImGuiSliderFlags.NoRoundToFormat | (logarithmic ? ImGuiSliderFlags.Logarithmic : ImGuiSliderFlags.None);
 		bool changed;
 
 		using (ImRaii.Disabled(!enabled))
@@ -1499,7 +1499,7 @@ public static partial class M3Widgets
 	{
 		var scale = M3.Scale;
 		var editing = ImGuiP.TempInputIsActive(ImGui.GetID(id));
-		var flags = logarithmic ? ImGuiSliderFlags.Logarithmic : ImGuiSliderFlags.None;
+		var flags = ImGuiSliderFlags.AlwaysClamp | (logarithmic ? ImGuiSliderFlags.Logarithmic : ImGuiSliderFlags.None);
 		bool changed;
 
 		using (ImRaii.Disabled(!enabled))
