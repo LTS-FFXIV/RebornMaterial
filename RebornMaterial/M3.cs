@@ -9,11 +9,12 @@ public static class M3
 
 	private static IDalamudPluginInterface? _pluginInterface;
 
-	// Remember the configured color, not the fallback, or an unusable color would rebuild the theme on every access.
 	private static Vector4 _configuredSeed = DefaultSeed;
 	private static M3Scheme _scheme = M3Scheme.FromSeed(DefaultSeed);
 
 	private static float _windowScale = 1f;
+
+	private static float _textScale = 1f;
 
 	private static float _elementScale = 1f;
 
@@ -23,10 +24,8 @@ public static class M3
 	private static readonly Dictionary<(Vector4 Color, bool Harmonize), M3ColorRoles> _customColors = [];
 	private static M3Scheme? _customColorScheme;
 
-	/// <summary>Where the accent color and the text, element and padding sizes are read from.</summary>
 	public static IM3Settings Settings { get; set; } = new M3Settings();
 
-	/// <summary>Element size at a setting of 100%. Below 1 makes every component more compact than the Material spec.</summary>
 	public static float ElementBaseline { get; set; } = 1f;
 
 	public static bool IsInitialized => _pluginInterface != null;
@@ -34,7 +33,6 @@ public static class M3
 	internal static IDalamudPluginInterface PluginInterface => _pluginInterface
 		?? throw new InvalidOperationException("Call M3.Initialize from the plugin's constructor before drawing any RebornMaterial component.");
 
-	/// <summary>Call once from the plugin's constructor, before anything is drawn.</summary>
 	public static void Initialize(IDalamudPluginInterface pluginInterface, IM3Settings? settings = null)
 	{
 		_pluginInterface = pluginInterface;
@@ -47,7 +45,6 @@ public static class M3
 		ReadSizes();
 	}
 
-	/// <summary>Call from the plugin's Dispose. Releases the fonts and clears every cached animation and layout.</summary>
 	public static void Dispose()
 	{
 		M3Fonts.DisposeAll();
@@ -66,11 +63,8 @@ public static class M3
 
 	public static float Scale => ImGuiHelpers.GlobalScale * _elementScale * _windowScale;
 
-	/// <summary>Scale for padding and spacing. Follows the padding setting on top of <see cref="Scale"/>, so the space can shrink or grow without the controls changing size.</summary>
 	public static float PaddingScale => Scale * _paddingScale;
 
-	/// <summary>Call once per frame, before any window draws.</summary>
-	// Keeps the old sizes while a control is held, so the size sliders don't resize under the mouse.
 	public static void BeginFrame()
 	{
 		if (!ImGui.IsAnyItemActive())
@@ -81,14 +75,13 @@ public static class M3
 
 	private static void ReadSizes()
 	{
+		_textScale = Math.Clamp(Settings.UiTextScale, 0.5f, 3f);
 		_elementScale = ElementBaseline * Math.Clamp(Settings.UiElementScale, 0.5f, 2.5f);
 		_paddingScale = Math.Clamp(Settings.UiPaddingScale, 0f, 3f);
 	}
 
-	// Dalamud fonts already include the global scale, so it's left out here.
-	public static float TextScale => Math.Clamp(Settings.UiTextScale, 0.5f, 3f) * _windowScale;
+	public static float TextScale => _textScale * _windowScale;
 
-	// Push before M3Style.Push so the window's padding and corners scale too.
 	public static WindowScaleScope PushWindowScale(float scale)
 	{
 		var previous = _windowScale;
@@ -105,7 +98,6 @@ public static class M3
 			{
 				_configuredSeed = seed;
 
-				// Grey or black colors make an unusable theme, so fall back to the default.
 				M3ColorMath.ToLch(seed, out var lightness, out var chroma, out _);
 				_scheme = M3Scheme.FromSeed(lightness < 5f || chroma < 2f ? DefaultSeed : seed);
 			}
@@ -185,7 +177,6 @@ public static class M3
 		return ImGui.GetColorU32(color with { W = alpha });
 	}
 
-	// Turns a colour's hue up to 15 degrees towards the accent, so a fixed colour sits better beside the scheme.
 	public static Vector4 Harmonize(Vector4 color)
 	{
 		M3ColorMath.ToLch(color, out var lightness, out var chroma, out var hue);
@@ -218,7 +209,6 @@ public static class M3
 		return roles;
 	}
 
-	// Cycles primary, tertiary and secondary by index, so neighbouring cards and sections can be told apart.
 	public static Vector4 AccentFor(int index)
 	{
 		var scheme = Scheme;
@@ -272,7 +262,6 @@ public static class M3
 	{
 		public void Dispose()
 		{
-			// A default scope pushed nothing, so leave the scale alone.
 			if (previous > 0f)
 			{
 				_windowScale = previous;
