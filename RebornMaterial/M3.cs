@@ -19,6 +19,10 @@ public static class M3
 
 	private static float _paddingScale = 1f;
 
+	private const int MaxCustomColors = 128;
+	private static readonly Dictionary<(Vector4 Color, bool Harmonize), M3ColorRoles> _customColors = [];
+	private static M3Scheme? _customColorScheme;
+
 	/// <summary>Where the accent color and the text, element and padding sizes are read from.</summary>
 	public static IM3Settings Settings { get; set; } = new M3Settings();
 
@@ -55,6 +59,8 @@ public static class M3
 		M3Tree.Reset();
 		M3Navigation.Reset();
 		M3Tooltip.Handler = null;
+		_customColors.Clear();
+		_customColorScheme = null;
 		_pluginInterface = null;
 	}
 
@@ -192,14 +198,24 @@ public static class M3
 
 	public static M3ColorRoles CustomColor(Vector4 color, bool harmonize = true)
 	{
-		if (harmonize)
+		var scheme = Scheme;
+		if (!ReferenceEquals(_customColorScheme, scheme) || _customColors.Count >= MaxCustomColors)
 		{
-			color = Harmonize(color);
+			_customColors.Clear();
+			_customColorScheme = scheme;
 		}
 
-		M3ColorMath.ToLch(color, out _, out var chroma, out var hue);
+		if (_customColors.TryGetValue((color, harmonize), out var cached))
+		{
+			return cached;
+		}
+
+		var source = harmonize ? Harmonize(color) : color;
+		M3ColorMath.ToLch(source, out _, out var chroma, out var hue);
 		var palette = new TonalPalette(hue, MathF.Max(chroma, 16f));
-		return new M3ColorRoles(palette[80], palette[20], palette[30], palette[90]);
+		var roles = new M3ColorRoles(palette[80], palette[20], palette[30], palette[90]);
+		_customColors[(color, harmonize)] = roles;
+		return roles;
 	}
 
 	// Cycles primary, tertiary and secondary by index, so neighbouring cards and sections can be told apart.
@@ -224,6 +240,18 @@ public static class M3
 			M3Severity.Success => scheme.Success,
 			M3Severity.Info => scheme.Info,
 			_ => scheme.Primary,
+		};
+	}
+
+	public static FontAwesomeIcon SeverityIcon(M3Severity severity)
+	{
+		return severity switch
+		{
+			M3Severity.Error => FontAwesomeIcon.ExclamationCircle,
+			M3Severity.Warning => FontAwesomeIcon.ExclamationTriangle,
+			M3Severity.Success => FontAwesomeIcon.CheckCircle,
+			M3Severity.Info => FontAwesomeIcon.InfoCircle,
+			_ => FontAwesomeIcon.None,
 		};
 	}
 

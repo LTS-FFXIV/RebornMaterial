@@ -8,7 +8,13 @@ public static class M3Fonts
 	private const int GameFontCapacity = 12;
 	private const int DefaultFontCapacity = 4;
 
-	private readonly record struct CachedFont(IFontHandle Handle, int LastUsedFrame);
+	private sealed class CachedFont(IFontHandle handle)
+	{
+		public IFontHandle Handle { get; } = handle;
+		public int LastUsedFrame { get; set; }
+		public int ResolvedFrame { get; set; } = -1;
+		public ImFontPtr Resolved { get; set; }
+	}
 
 	private static readonly Lock _lock = new();
 	private static readonly Dictionary<int, CachedFont> _handles = [];
@@ -42,41 +48,51 @@ public static class M3Fonts
 			if (!cache.TryGetValue(key, out var cached))
 			{
 				Evict(cache, capacity - 1, frame);
-				cached = new CachedFont(create(key), frame);
+				cached = new CachedFont(create(key));
+				cache[key] = cached;
 			}
 
-			cache[key] = cached with { LastUsedFrame = frame };
-			if (Loaded(cached.Handle) is { } font)
+			cached.LastUsedFrame = frame;
+			if (cached.ResolvedFrame == frame)
 			{
-				return font;
+				return cached.Resolved;
 			}
 
-			// The atlas builds asynchronously; until this size is ready, the nearest loaded one stands in.
-			var nearest = -1;
-			ImFontPtr? fallback = null;
-			foreach (var (other, candidate) in cache)
-			{
-				if (other == key || (fallback != null && Math.Abs(other - key) >= Math.Abs(nearest - key)))
-				{
-					continue;
-				}
-
-				if (Loaded(candidate.Handle) is { } ready)
-				{
-					nearest = other;
-					fallback = ready;
-				}
-			}
-
-			if (fallback is not { } nearestFont)
+			var font = Loaded(cached.Handle) ?? Nearest(cache, key, frame);
+			if (font is not { } found)
 			{
 				return ImGui.GetFont();
 			}
 
-			// Still in use, so it must not be the one evicted to make room.
-			cache[nearest] = cache[nearest] with { LastUsedFrame = frame };
-			return nearestFont;
+			cached.Resolved = found;
+			cached.ResolvedFrame = frame;
+			return found;
 		}
+	}
+
+	private static ImFontPtr? Nearest(Dictionary<int, CachedFont> cache, int key, int frame)
+	{
+		CachedFont? nearest = null;
+		var nearestKey = -1;
+		ImFontPtr? fallback = null;
+		foreach (var (other, candidate) in cache)
+		{
+			if (other == key || (fallback != null && Math.Abs(other - key) >= Math.Abs(nearestKey - key)))
+			{
+				continue;
+			}
+
+			if (Loaded(candidate.Handle) is { } ready)
+			{
+				nearest = candidate;
+				nearestKey = other;
+				fallback = ready;
+			}
+		}
+
+		nearest?.LastUsedFrame = frame;
+
+		return fallback;
 	}
 
 	private static ImFontPtr? Loaded(IFontHandle handle)

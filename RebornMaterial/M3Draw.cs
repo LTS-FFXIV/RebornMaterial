@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Dalamud.Interface.Textures.TextureWraps;
 using Dalamud.Interface.Utility.Raii;
 
@@ -6,6 +7,31 @@ namespace RebornMaterial;
 public static class M3Draw
 {
 	private const int RailFadeBands = 6;
+
+	private static readonly Dictionary<FontAwesomeIcon, string> _glyphs = [];
+
+	public static bool MouseOver(Vector2 min, Vector2 max, bool whileActive = false)
+	{
+		var flags = ImGuiHoveredFlags.ChildWindows | (whileActive ? ImGuiHoveredFlags.AllowWhenBlockedByActiveItem : ImGuiHoveredFlags.None);
+		return ImGui.IsMouseHoveringRect(min, max, false) && ImGui.IsWindowHovered(flags);
+	}
+
+	public static bool Usable([NotNullWhen(true)] IDalamudTextureWrap? texture)
+	{
+		if (texture == null)
+		{
+			return false;
+		}
+
+		try
+		{
+			return !texture.Handle.IsNull;
+		}
+		catch (ObjectDisposedException)
+		{
+			return false;
+		}
+	}
 
 	public static void Container(ImDrawListPtr drawList, Vector2 min, Vector2 max, Vector4 fill, float rounding, Vector4? outline = null, float outlineSize = 1f)
 	{
@@ -135,22 +161,33 @@ public static class M3Draw
 		drawList.PopClipRect();
 	}
 
+	public static string Glyph(FontAwesomeIcon icon)
+	{
+		if (!_glyphs.TryGetValue(icon, out var glyph))
+		{
+			glyph = icon.ToIconString();
+			_glyphs[icon] = glyph;
+		}
+
+		return glyph;
+	}
+
 	public static Vector2 MeasureIcon(FontAwesomeIcon icon)
 	{
 		using var font = ImRaii.PushFont(UiBuilder.IconFont);
-		return ImGui.CalcTextSize(icon.ToIconString());
+		return ImGui.CalcTextSize(Glyph(icon));
 	}
 
 	public static void Icon(ImDrawListPtr drawList, FontAwesomeIcon icon, Vector2 position, Vector4 color)
 	{
 		using var font = ImRaii.PushFont(UiBuilder.IconFont);
-		drawList.AddText(UiBuilder.IconFont, ImGui.GetFontSize(), position, M3.U32(color), icon.ToIconString());
+		drawList.AddText(UiBuilder.IconFont, ImGui.GetFontSize(), position, M3.U32(color), Glyph(icon));
 	}
 
 	public static void IconCentered(ImDrawListPtr drawList, FontAwesomeIcon icon, Vector2 min, Vector2 max, Vector4 color, float scale = 1f)
 	{
 		using var font = ImRaii.PushFont(UiBuilder.IconFont);
-		var text = icon.ToIconString();
+		var text = Glyph(icon);
 		var size = ImGui.CalcTextSize(text) * scale;
 		var position = min + (((max - min) - size) * 0.5f);
 		drawList.AddText(UiBuilder.IconFont, ImGui.GetFontSize() * scale, position, M3.U32(color), text);
@@ -198,35 +235,32 @@ public static class M3Motion
 {
 	private const int MaxTrackedValues = 512;
 
-	private static readonly Dictionary<uint, float> _values = [];
+	private static readonly M3FrameCache<float> _values = new(MaxTrackedValues);
 
 	public const float FastDuration = 0.14f;
 	public const float EmphasisedDuration = 0.28f;
 
 	public static float Approach(uint id, float target, float duration)
 	{
-		if (!_values.TryGetValue(id, out var current))
+		if (_values.TryGet(id, out var current))
 		{
-			if (_values.Count >= MaxTrackedValues)
+			if (current == target)
 			{
-				_values.Clear();
+				return target;
 			}
 
-			_values[id] = target;
-			return target;
+			if (MathF.Abs(target - current) >= 0.001f)
+			{
+				var delta = ImGui.GetIO().DeltaTime;
+				var step = duration <= 0f ? 1f : 1f - MathF.Exp(-delta / (duration * 0.35f));
+				current = float.Lerp(current, target, Math.Clamp(step, 0f, 1f));
+				_values.Set(id, current);
+				return current;
+			}
 		}
 
-		if (MathF.Abs(target - current) < 0.001f)
-		{
-			_values[id] = target;
-			return target;
-		}
-
-		var delta = ImGui.GetIO().DeltaTime;
-		var step = duration <= 0f ? 1f : 1f - MathF.Exp(-delta / (duration * 0.35f));
-		current = float.Lerp(current, target, Math.Clamp(step, 0f, 1f));
-		_values[id] = current;
-		return current;
+		_values.Set(id, target);
+		return target;
 	}
 
 	public static float Approach(string id, float target, float duration)
