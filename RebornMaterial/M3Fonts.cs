@@ -20,18 +20,14 @@ public static class M3Fonts
 	private static readonly Dictionary<int, CachedFont> _handles = [];
 	private static readonly Dictionary<int, CachedFont> _defaultHandles = [];
 
-	// Axis, the game's UI font, at a pixel size.
 	public static ImFontPtr GetFont(float size)
 	{
-		// Round to a stable integer key to avoid excessive variants.
 		var key = Math.Max(1, (int)MathF.Round(size));
 
-		// The pixel-size constructor matters: GetRecommendedFamilyAndSize takes points, and given pixels picks a much larger font.
 		return Resolve(_handles, GameFontCapacity, key, static px => M3.PluginInterface.UiBuilder.FontAtlas.NewGameFontHandle(
 			new GameFontStyle(GameFontFamily.Axis, px)));
 	}
 
-	// Dalamud's default font, scaled from its configured size.
 	public static ImFontPtr GetDefaultFont(float scale)
 	{
 		var key = Math.Max(1, (int)MathF.Round(M3.PluginInterface.UiBuilder.FontDefaultSizePx * scale));
@@ -104,8 +100,8 @@ public static class M3Fonts
 
 		try
 		{
-			using var locked = handle.Lock();
-			var font = locked.ImFont;
+			using var pushed = handle.Push();
+			var font = ImGui.GetFont();
 			return font.IsLoaded() ? font : null;
 		}
 		catch (Exception)
