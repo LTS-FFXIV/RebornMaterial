@@ -51,6 +51,8 @@ public static class M3
 	{
 		M3Gamepad.Reset();
 		M3Brand.Reset();
+		M3Plugins.Invalidate();
+		M3FoldWindow.ResetSnackbarHost();
 		M3Fonts.DisposeAll();
 		M3Snackbar.Clear();
 		M3Motion.Reset();
@@ -76,6 +78,7 @@ public static class M3
 			ReadSizes();
 		}
 
+		M3Plugins.Invalidate();
 		M3Gamepad.BeginFrame();
 	}
 
