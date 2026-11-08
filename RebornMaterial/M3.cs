@@ -49,6 +49,8 @@ public static class M3
 
 	public static void Dispose()
 	{
+		M3Gamepad.Reset();
+		M3Brand.Reset();
 		M3Fonts.DisposeAll();
 		M3Snackbar.Clear();
 		M3Motion.Reset();
@@ -73,6 +75,8 @@ public static class M3
 		{
 			ReadSizes();
 		}
+
+		M3Gamepad.BeginFrame();
 	}
 
 	private static void ReadSizes()
