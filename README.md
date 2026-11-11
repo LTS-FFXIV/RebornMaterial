@@ -111,6 +111,12 @@ M3Brand.SetLogoResource(typeof(MyPlugin).Assembly, "MyPlugin.Images.Logo.png");
 M3Window.DefaultDensity = Config.CompactLayout ? M3Density.Tight : M3Density.Compact;
 ```
 
+Dalamud closes the focused window when Escape is pressed. `M3Dialog` and the hotkey field use Escape themselves, so an `M3Window` holds that off while one of them is open and until the key is let go. A window that isn't an `M3Window` can do the same from its `PreDraw`:
+
+```csharp
+RespectCloseHotkey = !M3.EscapeCaptured;
+```
+
 ### Controller
 
 This is mostly added because of GBR.
