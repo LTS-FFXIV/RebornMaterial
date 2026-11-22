@@ -55,6 +55,8 @@ public readonly struct M3RowInfo
 	public bool Hovered { get; init; }
 
 	public bool ControlBelow { get; init; }
+
+	public string? Tooltip { get; init; }
 }
 
 public static class M3SettingRow
@@ -77,6 +79,18 @@ public static class M3SettingRow
 		return icon == FontAwesomeIcon.None ? 0f : M3Draw.MeasureIcon(icon).X + (10f * M3.Scale);
 	}
 
+	private static string? TakeDescription(string label, ref string? supporting)
+	{
+		if (!M3.Settings.UiDescriptionTooltips || string.IsNullOrEmpty(label) || string.IsNullOrEmpty(supporting))
+		{
+			return null;
+		}
+
+		var description = supporting;
+		supporting = null;
+		return description;
+	}
+
 	public static float MaxControlWidth(FontAwesomeIcon leadingIcon = FontAwesomeIcon.None)
 	{
 		return InnerWidth(RowWidth, IconWidth(leadingIcon));
@@ -95,6 +109,7 @@ public static class M3SettingRow
 	{
 		var s = M3.Scheme;
 		var scale = M3.Scale;
+		var description = TakeDescription(label, ref supporting);
 
 		var min = ImGui.GetCursorScreenPos();
 		var width = RowWidth;
@@ -194,6 +209,7 @@ public static class M3SettingRow
 			ControlWidth = controlSize.X,
 			Hovered = hovered,
 			ControlBelow = controlBelow,
+			Tooltip = description,
 		};
 	}
 
@@ -232,6 +248,11 @@ public static class M3SettingRow
 
 	public static void End(in M3RowInfo row)
 	{
+		if (row.Hovered && !M3Tooltip.ShownThisFrame)
+		{
+			M3Tooltip.Show(row.Tooltip);
+		}
+
 		ImGui.SetCursorScreenPos(new Vector2(row.Min.X, row.Max.Y));
 		ImGui.Dummy(new Vector2(row.Max.X - row.Min.X, 2f * M3.Scale));
 	}
@@ -241,6 +262,7 @@ public static class M3SettingRow
 		var s = M3.Scheme;
 		var scale = M3.Scale;
 		var tone = accent ?? s.Primary;
+		var description = TakeDescription(label, ref supporting);
 		var width = MathF.Max(64f * scale, ImGui.GetContentRegionAvail().X - M3Card.RightInset);
 
 		var iconWidth = leadingIcon == FontAwesomeIcon.None ? 0f : M3Draw.MeasureIcon(leadingIcon).X + (12f * scale);
@@ -268,6 +290,11 @@ public static class M3SettingRow
 		{
 			drawList.AddRectFilled(min, max, M3.U32(s.OnSurface, held ? M3.StatePressed : M3.StateHover), M3.ShapeSmall);
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+		}
+
+		if (hovered)
+		{
+			M3Tooltip.Show(description);
 		}
 
 		var textLeft = min.X + PaddingX + iconWidth;

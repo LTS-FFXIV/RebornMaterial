@@ -224,8 +224,7 @@ public static class M3
 		}
 
 		var opacity = active ? StatePressed + StateHover : StateHover;
-		var mixed = M3ColorMath.Mix(container, content, opacity);
-		return mixed with { W = container.W };
+		return Vector4.Lerp(container, content, opacity) with { W = container.W };
 	}
 
 	public static Vector4 ContentOn(Vector4 fill)

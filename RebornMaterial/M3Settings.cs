@@ -19,6 +19,14 @@ public interface IM3Settings
 		get => 1f;
 		set { }
 	}
+
+	bool UiIconSidebar
+	{
+		get => false;
+		set { }
+	}
+
+	bool UiDescriptionTooltips => false;
 }
 
 public sealed class M3Settings : IM3Settings
@@ -32,4 +40,8 @@ public sealed class M3Settings : IM3Settings
 	public float UiPaddingScale { get; set; } = 1f;
 
 	public float UiMotionScale { get; set; } = 1f;
+
+	public bool UiIconSidebar { get; set; }
+
+	public bool UiDescriptionTooltips { get; set; }
 }

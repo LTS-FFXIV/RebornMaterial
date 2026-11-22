@@ -208,8 +208,11 @@ public abstract class M3ShellWindow(string name, string idPrefix, string title, 
 
 		var available = MathF.Max(1f, ImGui.GetContentRegionAvail().X);
 		var spacing = ImGui.GetStyle().ItemSpacing.X;
-		var expanded = available >= 600f * Scale;
-		var sidebarWidth = expanded ? MathF.Min(DrawerWidth(), available * 0.4f) : MathF.Min(84f * Scale, available * 0.3f);
+		var iconsOnly = M3.Settings.UiIconSidebar;
+		var expanded = !iconsOnly && available >= 600f * Scale;
+		var sidebarWidth = iconsOnly ? MathF.Min(M3Navigation.IconStripWidth, available * 0.3f)
+			: expanded ? MathF.Min(DrawerWidth(), available * 0.4f)
+			: MathF.Min(84f * Scale, available * 0.3f);
 
 		var origin = ImGui.GetCursorScreenPos();
 		var paneHeight = MathF.Max(1f, ImGui.GetContentRegionAvail().Y);
@@ -217,7 +220,7 @@ public abstract class M3ShellWindow(string name, string idPrefix, string title, 
 		ImGui.GetWindowDrawList().AddLine(new Vector2(dividerX, origin.Y), new Vector2(dividerX, origin.Y + paneHeight),
 			M3.U32(M3.Scheme.OutlineVariant, 0.45f), 1f * Scale);
 
-		DrawNavigation(sidebarWidth, expanded);
+		DrawNavigation(sidebarWidth, expanded, iconsOnly);
 		ImGui.SameLine(0f, spacing);
 		DrawBody(expanded);
 
@@ -314,7 +317,7 @@ public abstract class M3ShellWindow(string name, string idPrefix, string title, 
 		return MathF.Max(190f * Scale, _drawerWidest + (24f * Scale) + M3Style.Spacing(16f, 12f) + M3Style.Spacing(14f, 10f) + (20f * Scale));
 	}
 
-	private void DrawNavigation(float width, bool expanded)
+	private void DrawNavigation(float width, bool expanded, bool iconsOnly)
 	{
 		using var child = ImRaii.Child(_navId, new Vector2(width, -1f), false,
 			ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
@@ -355,11 +358,12 @@ public abstract class M3ShellWindow(string name, string idPrefix, string title, 
 		}
 
 		var footer = NavigationFooterHeight(expanded);
-		using (var list = ImRaii.Child(_navListId, new Vector2(-1f, MathF.Max(1f, ImGui.GetContentRegionAvail().Y - footer)), false))
+		using (var list = ImRaii.Child(_navListId, new Vector2(-1f, MathF.Max(1f, ImGui.GetContentRegionAvail().Y - footer)), false,
+			iconsOnly ? ImGuiWindowFlags.NoScrollbar : ImGuiWindowFlags.None))
 		{
 			if (list)
 			{
-				DrawNavigationItems(expanded);
+				DrawNavigationItems(expanded, iconsOnly);
 			}
 		}
 
@@ -369,7 +373,7 @@ public abstract class M3ShellWindow(string name, string idPrefix, string title, 
 		}
 	}
 
-	private void DrawNavigationItems(bool expanded)
+	private void DrawNavigationItems(bool expanded, bool iconsOnly)
 	{
 		var current = CurrentPage;
 		var tools = M3.Scheme.Tertiary;
@@ -382,7 +386,7 @@ public abstract class M3ShellWindow(string name, string idPrefix, string title, 
 				page.Tool ? tools : null, _badges[i], Section: page.Section));
 		}
 
-		if (M3Navigation.Draw(_navItemsId, _navItems, expanded) is { } clicked)
+		if (M3Navigation.Draw(_navItemsId, _navItems, expanded, iconsOnly) is { } clicked)
 		{
 			ShowPage(clicked);
 		}
@@ -391,7 +395,7 @@ public abstract class M3ShellWindow(string name, string idPrefix, string title, 
 	private void DrawBrand(float width, bool expanded)
 	{
 		var s = M3.Scheme;
-		var size = 40f * Scale;
+		var size = MathF.Min(40f * Scale, width);
 		var origin = ImGui.GetCursorScreenPos();
 		var height = size + (2f * M3.Space1);
 		var home = _visible.Count > 0 ? _visible[0] : null;

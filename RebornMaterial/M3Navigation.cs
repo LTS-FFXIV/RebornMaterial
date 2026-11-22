@@ -31,6 +31,8 @@ public static class M3Navigation
 
 	private static float DrawerRowHeight => M3Style.Density == M3Density.Tight ? M3.FitText(36f, 8f) : M3.FitText(48f, 12f);
 
+	internal static float IconStripWidth => MathF.Max(44f * M3.Scale, (UiBuilder.IconFont.FontSize * 1.25f) + (8f * M3.Scale));
+
 	private static float RailItemHeight
 	{
 		get
@@ -40,7 +42,7 @@ public static class M3Navigation
 		}
 	}
 
-	public static string? Draw(string id, IReadOnlyList<M3NavItem> items, bool expanded)
+	public static string? Draw(string id, IReadOnlyList<M3NavItem> items, bool expanded, bool iconsOnly = false)
 	{
 		string? clicked = null;
 		string? section = null;
@@ -51,12 +53,12 @@ public static class M3Navigation
 			var item = items[i];
 			if (item.Section != null && item.Section != section)
 			{
-				SectionHeader(item.Section, expanded, i > 0 && !items[i - 1].SeparatorAfter);
+				SectionHeader(item.Section, expanded && !iconsOnly, i > 0 && !items[i - 1].SeparatorAfter);
 			}
 
 			section = item.Section;
 
-			if (expanded ? DrawerItem(item) : RailItem(item))
+			if (iconsOnly ? IconItem(item) : expanded ? DrawerItem(item) : RailItem(item))
 			{
 				clicked = item.Id;
 			}
@@ -220,8 +222,60 @@ public static class M3Navigation
 
 		if (hovered)
 		{
-			var tip = string.IsNullOrEmpty(item.Tooltip) ? item.Label : $"{item.Label}\n \n{item.Tooltip}";
-			M3Tooltip.Show(tip);
+			ShowNamedTooltip(item);
+		}
+
+		return pressed;
+	}
+
+	private static void ShowNamedTooltip(in M3NavItem item)
+	{
+		M3Tooltip.Show(string.IsNullOrEmpty(item.Tooltip) ? item.Label : $"{item.Label}\n \n{item.Tooltip}");
+	}
+
+	private static bool IconItem(in M3NavItem item)
+	{
+		var s = M3.Scheme;
+		var scale = M3.Scale;
+		var tone = item.Accent ?? s.Primary;
+		var textureSize = 24f * scale;
+		var iconSize = ItemIconSize(item, textureSize);
+		var width = MathF.Max(1f, ImGui.GetContentRegionAvail().X);
+		var height = MathF.Max((M3Style.Density == M3Density.Tight ? 34f : 40f) * scale, UiBuilder.IconFont.FontSize + (8f * scale));
+
+		var pressed = ImGui.InvisibleButton($"nav_{item.Id}", new Vector2(width, height));
+		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var held = ImGui.IsItemActive();
+		var min = ImGui.GetItemRectMin();
+		var max = ImGui.GetItemRectMax();
+		var drawList = ImGui.GetWindowDrawList();
+		var rounding = M3.ShapeMedium;
+		var selection = M3Motion.Approach(ImGui.GetID($"nav_sel_{item.Id}"), item.Selected ? 1f : 0f, M3Motion.EmphasisedDuration);
+
+		if (selection > 0.01f)
+		{
+			drawList.AddRectFilled(min, max, M3.U32(s.SecondaryContainer, 0.95f * selection), rounding);
+		}
+
+		if (hovered || held)
+		{
+			drawList.AddRectFilled(min, max, M3.U32(s.OnSurface, held ? M3.StatePressed : M3.StateHover), rounding);
+			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+		}
+
+		ItemIcon(drawList, item, min + ((max - min - iconSize) * 0.5f), textureSize, M3ColorMath.Mix(s.OnSurfaceVariant, tone, selection));
+
+		if (!string.IsNullOrEmpty(item.Badge))
+		{
+			var dot = M3Widgets.BadgeSize(null);
+			M3Widgets.BadgeAt(new Vector2(max.X - dot.X, min.Y + dot.Y));
+		}
+
+		M3Draw.FocusRing(min, max, rounding);
+
+		if (hovered)
+		{
+			ShowNamedTooltip(item);
 		}
 
 		return pressed;

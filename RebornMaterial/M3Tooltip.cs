@@ -6,7 +6,11 @@ public static class M3Tooltip
 {
 	private const float WrapEms = 28f;
 
+	private static int _shownFrame = -1;
+
 	public static Action<string>? Handler { get; set; }
+
+	internal static bool ShownThisFrame => _shownFrame == ImGui.GetFrameCount();
 
 	public static void Hovered(string? text)
 	{
@@ -23,6 +27,7 @@ public static class M3Tooltip
 			return;
 		}
 
+		_shownFrame = ImGui.GetFrameCount();
 		if (Handler != null)
 		{
 			Handler(text);

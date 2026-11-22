@@ -126,15 +126,10 @@ public static class M3Card
 
 		var fill = style switch
 		{
-			M3CardStyle.Outlined => M3.Alpha(s.SurfaceContainerLowest, 0.35f),
-			M3CardStyle.Elevated => s.SurfaceContainerLow,
-			_ => M3.Alpha(s.SurfaceContainerLow, 0.92f),
+			M3CardStyle.Outlined => M3.Alpha(hovered ? s.SurfaceContainerLow : s.SurfaceContainerLowest, 0.35f),
+			M3CardStyle.Elevated => hovered ? s.SurfaceContainer : s.SurfaceContainerLow,
+			_ => M3.Alpha(hovered ? s.SurfaceContainer : s.SurfaceContainerLow, 0.92f),
 		};
-
-		if (hovered)
-		{
-			fill = M3ColorMath.Mix(fill, accent, 0.05f) with { W = fill.W };
-		}
 
 		if (style == M3CardStyle.Elevated)
 		{

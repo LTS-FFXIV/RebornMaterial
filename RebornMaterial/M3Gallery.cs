@@ -1799,8 +1799,19 @@ public static class M3Gallery
 			}
 		}
 
+		ImGui.SameLine(0f, M3.Space3);
+
+		using (var strip = ImRaii.Child("##gallery_icon_strip", new Vector2(M3Navigation.IconStripWidth, height), false))
+		{
+			if (strip)
+			{
+				_navSelected = M3Navigation.Draw("gallery_icon_strip", items, expanded: false, iconsOnly: true) ?? _navSelected;
+			}
+		}
+
 		Caption($"The drawer collapses to the rail below {M3Navigation.DrawerBreakpoint:0}dp. Both share one selection.");
 		Caption("Sections put a heading over each group in the drawer, and a divider in the rail.");
+		Caption("The icon strip keeps the sidebar out of the way. Names show on hover.");
 
 		Heading("Tabs", isNew: true);
 		Caption("The page switcher at the top of this gallery is a primary tab row too.");
