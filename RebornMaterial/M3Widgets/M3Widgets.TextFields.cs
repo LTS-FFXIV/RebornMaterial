@@ -57,8 +57,8 @@ public static partial class M3Widgets
 			}
 		}
 
-		ImGui.SetCursorScreenPos(new Vector2(min.X, max.Y));
-		ImGui.Dummy(new Vector2(width, 0f));
+		ImGui.SetCursorScreenPos(min);
+		ImGui.Dummy(new Vector2(width, height));
 		return changed;
 	}
 
@@ -146,8 +146,8 @@ public static partial class M3Widgets
 				MathF.Max(32f * scale, width - (paddingX * 2f)), error ? M3.Alpha(s.Error, dim) : M3.Alpha(s.OnSurfaceVariant, 0.9f * dim));
 		}
 
-		ImGui.SetCursorScreenPos(new Vector2(origin.X, bottom));
-		ImGui.Dummy(new Vector2(width, 0f));
+		ImGui.SetCursorScreenPos(origin);
+		ImGui.Dummy(new Vector2(width, bottom - origin.Y));
 		return changed;
 	}
 
