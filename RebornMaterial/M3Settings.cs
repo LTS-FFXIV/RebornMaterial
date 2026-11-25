@@ -27,6 +27,12 @@ public interface IM3Settings
 	}
 
 	bool UiDescriptionTooltips => false;
+
+	bool UiLightTheme
+	{
+		get => false;
+		set { }
+	}
 }
 
 public sealed class M3Settings : IM3Settings
@@ -44,4 +50,6 @@ public sealed class M3Settings : IM3Settings
 	public bool UiIconSidebar { get; set; }
 
 	public bool UiDescriptionTooltips { get; set; }
+
+	public bool UiLightTheme { get; set; }
 }

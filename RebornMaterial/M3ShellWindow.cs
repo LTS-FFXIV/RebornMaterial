@@ -295,6 +295,7 @@ public abstract class M3ShellWindow(string name, string idPrefix, string title, 
 		var signature = new HashCode();
 		signature.Add(title);
 		signature.Add(Scale);
+		signature.Add(ImGui.GetFontSize());
 		for (var i = 0; i < _visible.Count; i++)
 		{
 			signature.Add(_visible[i].Label);
@@ -358,7 +359,8 @@ public abstract class M3ShellWindow(string name, string idPrefix, string title, 
 		}
 
 		var footer = NavigationFooterHeight(expanded);
-		using (var list = ImRaii.Child(_navListId, new Vector2(-1f, MathF.Max(1f, ImGui.GetContentRegionAvail().Y - footer)), false,
+		var footerRoom = footer > 0f ? footer + ImGui.GetStyle().ItemSpacing.Y : 0f;
+		using (var list = ImRaii.Child(_navListId, new Vector2(-1f, MathF.Max(1f, ImGui.GetContentRegionAvail().Y - footerRoom)), false,
 			iconsOnly ? ImGuiWindowFlags.NoScrollbar : ImGuiWindowFlags.None))
 		{
 			if (list)
@@ -405,8 +407,12 @@ public abstract class M3ShellWindow(string name, string idPrefix, string title, 
 		var drawList = ImGui.GetWindowDrawList();
 		if (hovered)
 		{
-			drawList.AddRectFilled(origin, origin + new Vector2(width, height), M3.U32(s.OnSurface, M3.StateHover), M3.ShapeMedium);
-			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+			if (home != null)
+			{
+				drawList.AddRectFilled(origin, origin + new Vector2(width, height), M3.U32(s.OnSurface, M3.StateHover), M3.ShapeMedium);
+				ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+			}
+
 			M3Tooltip.Show(home?.Label ?? _title);
 		}
 
@@ -498,6 +504,7 @@ public abstract class M3ShellWindow(string name, string idPrefix, string title, 
 			return;
 		}
 
+		var cardDepth = M3Card.Depth;
 		try
 		{
 			if (searching)
@@ -511,6 +518,7 @@ public abstract class M3ShellWindow(string name, string idPrefix, string title, 
 		}
 		catch (Exception ex)
 		{
+			M3Card.RestoreDepth(cardDepth);
 			var pageName = searching ? "search results" : page!.Id;
 			var error = $"{pageName}: {ex.Message}";
 			if (error != _loggedPageError)

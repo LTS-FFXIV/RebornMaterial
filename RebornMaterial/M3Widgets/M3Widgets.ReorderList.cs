@@ -25,8 +25,10 @@ public static partial class M3Widgets
 		}
 
 		var ours = _reorderList == listKey && _reorderIndex >= 0;
-		var dragging = ours && ImGui.IsMouseDragging(ImGuiMouseButton.Left, 4f * scale);
+		var dragging = enabled && ours && ImGui.IsMouseDragging(ImGuiMouseButton.Left, 4f * scale);
 		var moved = false;
+		var keyMoveFrom = -1;
+		var keyMoveTo = -1;
 
 		using var idScope = ImRaii.PushId(id);
 		using var spacing = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, ImGui.GetStyle().ItemSpacing with { Y = gap });
@@ -37,10 +39,12 @@ public static partial class M3Widgets
 		for (var i = 0; i < items.Count; i++)
 		{
 			var item = items[i];
-			var pressed = ImGui.InvisibleButton($"##row{i}", new Vector2(width, height), (ImGuiButtonFlags)ImGuiButtonFlagsPrivate.PressedOnClick) && enabled;
-			var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-			var hovered = enabled && mouseOver && !dragging;
-			var focused = ImGui.IsItemFocused();
+			ImGui.PushID(i);
+			var pressed = DisabledButton("##row", new Vector2(width, height), enabled, (ImGuiButtonFlags)ImGuiButtonFlagsPrivate.PressedOnClick);
+			ImGui.PopID();
+			var mouseOver = ImGui.IsItemHovered(MouseOverFlags);
+			var hovered = IsHovered(enabled) && !dragging;
+			var focused = enabled && ImGui.IsItemFocused();
 			var min = ImGui.GetItemRectMin();
 			var max = ImGui.GetItemRectMax();
 			var lifted = dragging && i == _reorderIndex;
@@ -53,14 +57,13 @@ public static partial class M3Widgets
 				_reorderFrame = ImGui.GetFrameCount();
 			}
 
-			if (enabled && focused && !moved && ImGui.GetIO().KeyCtrl)
+			if (enabled && focused && keyMoveFrom < 0 && ImGui.GetIO().KeyCtrl)
 			{
 				var target = ImGui.IsKeyPressed(ImGuiKey.UpArrow) ? i - 1 : ImGui.IsKeyPressed(ImGuiKey.DownArrow) ? i + 1 : i;
 				if (target != i && target >= 0 && target < items.Count)
 				{
-					Move(items, i, target, ref selected);
-					ImGuiP.SetFocusID(ImGui.GetID($"##row{target}"), ImGuiP.GetCurrentWindow());
-					moved = true;
+					keyMoveFrom = i;
+					keyMoveTo = target;
 				}
 			}
 
@@ -98,10 +101,19 @@ public static partial class M3Widgets
 			}
 		}
 
+		if (keyMoveFrom >= 0)
+		{
+			Move(items, keyMoveFrom, keyMoveTo, ref selected);
+			ImGui.PushID(keyMoveTo);
+			ImGuiP.SetFocusID(ImGui.GetID("##row"), ImGuiP.GetCurrentWindow());
+			ImGui.PopID();
+			moved = true;
+		}
+
 		if (_reorderList == listKey && _reorderIndex >= 0)
 		{
 			_reorderFrame = ImGui.GetFrameCount();
-			if (!ImGui.IsMouseDown(ImGuiMouseButton.Left))
+			if (!enabled || !ImGui.IsMouseDown(ImGuiMouseButton.Left))
 			{
 				_reorderList = 0;
 				_reorderIndex = -1;

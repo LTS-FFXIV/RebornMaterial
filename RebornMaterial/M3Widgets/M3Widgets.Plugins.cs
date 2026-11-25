@@ -37,7 +37,7 @@ public static partial class M3Widgets
 	private static void DrawPluginPill(string id, IReadOnlyList<M3PluginRequirement> plugins, bool any, string label, FontAwesomeIcon icon, Vector4 tone)
 	{
 		Pill(id, label, tone, icon);
-		if (ImGui.IsItemHovered())
+		if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
 		{
 			M3Tooltip.Show(M3Plugins.Describe(plugins, any));
 		}

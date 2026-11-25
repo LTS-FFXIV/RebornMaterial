@@ -59,7 +59,9 @@ public static class M3Table
 		if (!string.IsNullOrEmpty(text))
 		{
 			var textSize = ImGui.CalcTextSize(text);
+			drawList.PushClipRect(min, max, true);
 			drawList.AddText(min + ((max - min - textSize) * 0.5f), M3.U32(s.OnSurface), text);
+			drawList.PopClipRect();
 		}
 	}
 

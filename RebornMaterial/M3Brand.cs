@@ -90,7 +90,14 @@ public static class M3Brand
 
 	internal static void Reset()
 	{
+		_logoAssembly = null;
+		_logoResource = null;
 		_logo = null;
 		_logoFrame = -1;
+		Name = string.Empty;
+		Version = string.Empty;
+		FallbackIcon = FontAwesomeIcon.Fire;
+		LogoCornerFraction = null;
+		LogoProvider = null;
 	}
 }

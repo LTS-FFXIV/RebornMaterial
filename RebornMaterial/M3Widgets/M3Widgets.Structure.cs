@@ -96,7 +96,8 @@ public static partial class M3Widgets
 		var padding = new Vector2(16f, 12f) * scale;
 		var width = MathF.Max(64f * scale, ImGui.GetContentRegionAvail().X);
 
-		var iconWidth = M3Draw.MeasureIcon(icon).X + (12f * scale);
+		var hasIcon = icon != FontAwesomeIcon.None;
+		var iconWidth = hasIcon ? M3Draw.MeasureIcon(icon).X + (12f * scale) : 0f;
 		var actionWidth = string.IsNullOrEmpty(actionLabel) ? 0f : ButtonWidth(FontAwesomeIcon.None, actionLabel) + (12f * scale);
 		var textWidth = MathF.Max(32f * scale, width - (padding.X * 2f) - iconWidth - actionWidth);
 		var textSize = ImGui.CalcTextSize(message, false, textWidth);
@@ -112,14 +113,24 @@ public static partial class M3Widgets
 		M3Draw.AccentRail(drawList, min.X + (2f * scale), 3f * scale, min.Y + (6f * scale), max.Y - (6f * scale), M3.Alpha(accent, 0.9f),
 			M3Draw.ResolveFade(40f, 0.35f, height));
 
-		M3Draw.Icon(drawList, icon, new Vector2(min.X + padding.X, min.Y + padding.Y + ((ImGui.GetTextLineHeight() * 0.1f))), accent);
-		_ = M3Draw.WrappedText(message, new Vector2(min.X + padding.X + iconWidth, min.Y + padding.Y), textWidth, M3.Alpha(s.OnSurface, 0.94f));
+		var textTop = min.Y + ((height - textSize.Y) * 0.5f);
+		if (hasIcon)
+		{
+			var iconSize = M3Draw.MeasureIcon(icon);
+			var iconY = textSize.Y <= ImGui.GetTextLineHeight() * 1.5f
+				? min.Y + ((height - iconSize.Y) * 0.5f)
+				: textTop + (ImGui.GetTextLineHeight() * 0.1f);
+			M3Draw.Icon(drawList, icon, new Vector2(min.X + padding.X, iconY), accent);
+		}
+
+		_ = M3Draw.WrappedText(message, new Vector2(min.X + padding.X + iconWidth, textTop), textWidth, M3.Alpha(s.OnSurface, 0.94f));
 
 		var clicked = false;
 		if (!string.IsNullOrEmpty(actionLabel))
 		{
+			using var idScope = ImRaii.PushId(id);
 			ImGui.SetCursorScreenPos(new Vector2(max.X - padding.X - actionWidth + (12f * scale), min.Y + ((height - ButtonHeight) * 0.5f)));
-			clicked = Button($"{id}_action", actionLabel, M3ButtonStyle.Text);
+			clicked = Button("##action", actionLabel, M3ButtonStyle.Text);
 		}
 
 		ImGui.SetCursorScreenPos(new Vector2(min.X, max.Y));
@@ -164,9 +175,10 @@ public static partial class M3Widgets
 		var clicked = false;
 		if (!string.IsNullOrEmpty(actionLabel))
 		{
+			using var idScope = ImRaii.PushId(id);
 			var buttonWidth = ButtonWidth(FontAwesomeIcon.None, actionLabel);
 			ImGui.SetCursorScreenPos(new Vector2(centerX - (buttonWidth * 0.5f), y + (12f * scale)));
-			clicked = Button($"{id}_action", actionLabel, M3ButtonStyle.Tonal);
+			clicked = Button("##action", actionLabel, M3ButtonStyle.Tonal);
 			y = ImGui.GetItemRectMax().Y;
 		}
 

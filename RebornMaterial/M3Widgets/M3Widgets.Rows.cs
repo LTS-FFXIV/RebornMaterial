@@ -6,7 +6,7 @@ public static partial class M3Widgets
 {
 	private const int MaxRowParts = 512;
 
-	private static readonly Dictionary<uint, (int Count, float FontSize, int Frame, float Widest)> _rowComboWidths = [];
+	private static readonly M3FrameCache<(int Count, float FontSize, int Frame, float Widest)> _rowComboWidths = new(128);
 	private static readonly Dictionary<(string Label, string Suffix), (string Label, string Id)> _rowParts = [];
 
 	private static void ResetRows()
@@ -57,7 +57,7 @@ public static partial class M3Widgets
 
 		var row = M3SettingRow.Begin(display, supporting, controlSize, disabled: !enabled);
 		ImGui.SetCursorScreenPos(row.ControlPosition);
-		var changed = SliderCore(id, ref value, min, max, null, format, trackWidth, logarithmic, enabled, step);
+		var changed = SliderCore(id, ref value, min, max, null, format, trackWidth, logarithmic, enabled, step, false);
 		M3SettingRow.End(row);
 		return changed;
 	}
@@ -66,12 +66,12 @@ public static partial class M3Widgets
 	{
 		var (display, id) = RowParts(label, "_slider");
 		var trackWidth = 150f * M3.Scale;
-		var gutter = MathF.Max(ImGui.CalcTextSize($"{min}").X, ImGui.CalcTextSize($"{max}").X) + (14f * M3.Scale);
+		var gutter = SliderIntGutter(min, max, false);
 		var controlSize = new Vector2(trackWidth + gutter, ButtonHeight);
 
 		var row = M3SettingRow.Begin(display, supporting, controlSize, disabled: !enabled);
 		ImGui.SetCursorScreenPos(row.ControlPosition);
-		var changed = SliderIntCore(id, ref value, min, max, null, trackWidth, logarithmic, enabled, step);
+		var changed = SliderIntCore(id, ref value, min, max, null, trackWidth, logarithmic, enabled, step, false);
 		M3SettingRow.End(row);
 		return changed;
 	}
@@ -87,7 +87,7 @@ public static partial class M3Widgets
 		var key = ImGui.GetID(comboId);
 		var fontSize = ImGui.GetFontSize();
 		var frame = ImGui.GetFrameCount();
-		if (_rowComboWidths.TryGetValue(key, out var cached) && cached.Count == count && cached.FontSize == fontSize && frame - cached.Frame < 60)
+		if (_rowComboWidths.TryGet(key, out var cached) && cached.Count == count && cached.FontSize == fontSize && frame - cached.Frame < 60)
 		{
 			return cached.Widest;
 		}
@@ -98,7 +98,7 @@ public static partial class M3Widgets
 			widest = MathF.Max(widest, ImGui.CalcTextSize(itemLabel(state, i)).X);
 		}
 
-		_rowComboWidths[key] = (count, fontSize, frame, widest);
+		_rowComboWidths.Set(key, (count, fontSize, frame, widest));
 		return widest;
 	}
 
@@ -177,7 +177,7 @@ public static partial class M3Widgets
 		var (display, id) = RowParts(label, "_color");
 		var scale = M3.Scale;
 		var swatch = ColorSwatchSize;
-		var canReset = defaultColor is { } fallback && fallback != color;
+		var canReset = defaultColor is { } fallback && !SameColor(fallback, color, alpha);
 		var resetSize = 32f * scale;
 		var controlSize = new Vector2(swatch + (canReset ? M3.Space1 + resetSize : 0f), MathF.Max(swatch, resetSize));
 
@@ -191,7 +191,7 @@ public static partial class M3Widgets
 			ImGui.SetCursorScreenPos(origin + new Vector2(swatch + M3.Space1, (controlSize.Y - resetSize) * 0.5f));
 			if (IconButton(RowParts(label, "_reset").Id, FontAwesomeIcon.Undo, "Reset to default", diameter: resetSize, enabled: enabled))
 			{
-				color = defaultColor!.Value;
+				color = alpha ? defaultColor!.Value : defaultColor!.Value with { W = 1f };
 				changed = true;
 			}
 		}
@@ -207,11 +207,7 @@ public static partial class M3Widgets
 
 		var row = M3SettingRow.Begin(display, supporting, new Vector2(width, M3TextField.Height), disabled: !enabled);
 		ImGui.SetCursorScreenPos(row.ControlPosition);
-		bool changed;
-		using (ImRaii.Disabled(!enabled))
-		{
-			changed = M3TextField.Draw(id, hint ?? string.Empty, ref text, width, maxLength, password);
-		}
+		var changed = M3TextField.Draw(id, hint ?? string.Empty, ref text, width, maxLength, password, M3TextFieldStyle.Filled, enabled);
 
 		M3SettingRow.End(row);
 		return changed;

@@ -24,12 +24,13 @@ public static partial class M3Widgets
 		var scale = M3.Scale;
 		var width = 24f * scale * 2f;
 		var iconWidth = IconSlotWidth(icon, texture);
+		var hasLabel = !string.IsNullOrEmpty(label);
 		if (iconWidth > 0f)
 		{
-			width += iconWidth + (8f * scale);
+			width += iconWidth + (hasLabel ? 8f * scale : 0f);
 		}
 
-		if (!string.IsNullOrEmpty(label))
+		if (hasLabel)
 		{
 			width += ImGui.CalcTextSize(label).X;
 		}
@@ -71,11 +72,11 @@ public static partial class M3Widgets
 		var height = ButtonHeight;
 
 		var requested = width ?? ButtonWidth(icon, label, texture);
-		var size = new Vector2(requested == 0f ? 1f : requested, height);
+		var size = new Vector2(requested <= 0f ? 1f : requested, height);
 
-		var pressed = ImGui.InvisibleButton(id, size) && enabled;
-		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var hovered = enabled && mouseOver;
+		var pressed = DisabledButton(id, size, enabled);
+		var mouseOver = ImGui.IsItemHovered(MouseOverFlags);
+		var hovered = IsHovered(enabled);
 		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();
@@ -134,7 +135,7 @@ public static partial class M3Widgets
 		return pressed;
 	}
 
-	private static readonly Dictionary<uint, float> _holdProgress = [];
+	private static readonly M3FrameCache<float> _holdProgress = new(128);
 
 	private static void ResetButtons()
 	{
@@ -143,7 +144,7 @@ public static partial class M3Widgets
 
 	public static bool HoldButton(string id, string label, float seconds = 1f, M3ButtonStyle style = M3ButtonStyle.Danger, FontAwesomeIcon icon = FontAwesomeIcon.None, float? width = null, bool enabled = true, string? tooltip = null)
 	{
-		_ = Button(id, label, style, icon, width, enabled, tooltip ?? "Hold to confirm");
+		_ = Button(id, label, style, icon, width, enabled, tooltip ?? (enabled ? "Hold to confirm" : null));
 		var key = ImGuiP.GetItemID();
 		var active = enabled && ImGui.IsItemActive();
 
@@ -153,7 +154,7 @@ public static partial class M3Widgets
 
 		var delta = MathF.Min(ImGui.GetIO().DeltaTime, 0.1f);
 
-		_holdProgress.TryGetValue(key, out var progress);
+		_ = _holdProgress.TryGet(key, out var progress);
 		var done = false;
 
 		if (held && progress >= 0f && !ImGui.IsItemActivated())
@@ -170,7 +171,10 @@ public static partial class M3Widgets
 			progress = progress < 0f ? (active ? -1f : 0f) : MathF.Max(0f, progress - (delta * 4f));
 		}
 
-		_holdProgress[key] = progress;
+		if (progress != 0f || active)
+		{
+			_holdProgress.Set(key, progress);
+		}
 
 		var shown = progress < 0f ? 1f : progress;
 		if (shown > 0f)
@@ -191,11 +195,11 @@ public static partial class M3Widgets
 	{
 		var s = M3.Scheme;
 		var extent = diameter ?? IconButtonSize;
-		var size = Vector2.One * (extent == 0f ? 1f : extent);
+		var size = Vector2.One * (extent <= 0f ? 1f : extent);
 
-		var pressed = ImGui.InvisibleButton(id, size) && enabled;
-		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var hovered = enabled && mouseOver;
+		var pressed = DisabledButton(id, size, enabled);
+		var mouseOver = ImGui.IsItemHovered(MouseOverFlags);
+		var hovered = IsHovered(enabled);
 		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();
@@ -264,16 +268,16 @@ public static partial class M3Widgets
 	{
 		var s = M3.Scheme;
 		var extent = diameter ?? IconButtonSize;
-		var size = Vector2.One * (extent == 0f ? 1f : extent);
+		var size = Vector2.One * (extent <= 0f ? 1f : extent);
 
-		var pressed = ImGui.InvisibleButton(id, size) && enabled;
+		var pressed = DisabledButton(id, size, enabled);
 		if (pressed)
 		{
 			selected = !selected;
 		}
 
-		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var hovered = enabled && mouseOver;
+		var mouseOver = ImGui.IsItemHovered(MouseOverFlags);
+		var hovered = IsHovered(enabled);
 		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();

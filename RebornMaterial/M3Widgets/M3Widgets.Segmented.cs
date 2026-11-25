@@ -47,6 +47,7 @@ public static partial class M3Widgets
 		var rounding = height * 0.5f;
 		var origin = ImGui.GetCursorScreenPos();
 		var drawList = ImGui.GetWindowDrawList();
+		var dim = enabled ? 1f : M3.DisabledContent;
 		var result = -1;
 
 		using var idScope = ImRaii.PushId(id);
@@ -59,15 +60,15 @@ public static partial class M3Widgets
 
 			ImGui.SetCursorScreenPos(segmentMin);
 			ImGui.PushID(i);
-			var clicked = ImGui.InvisibleButton("##segment", new Vector2(segmentWidth, height));
+			var clicked = DisabledButton("##segment", new Vector2(segmentWidth, height), enabled);
 			ImGui.PopID();
-			if (clicked && !selected && enabled)
+			if (clicked && !selected)
 			{
 				result = i;
 			}
 
-			var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-			var hovered = enabled && mouseOver;
+			var mouseOver = ImGui.IsItemHovered(MouseOverFlags);
+			var hovered = IsHovered(enabled);
 			var held = enabled && ImGui.IsItemActive();
 			var segmentMax = segmentMin + new Vector2(segmentWidth, height);
 			var tone = enabled ? segment.Accent ?? s.Primary : M3.Alpha(s.OnSurface, M3.DisabledContent);
@@ -118,10 +119,10 @@ public static partial class M3Widgets
 			if (i > 0)
 			{
 				drawList.AddLine(segmentMin + new Vector2(0f, 1f * scale), new Vector2(segmentMin.X, segmentMax.Y - (1f * scale)),
-					M3.U32(s.Outline, 0.55f), 1f * scale);
+					M3.U32(s.Outline, 0.55f * dim), 1f * scale);
 			}
 
-			M3Draw.FocusRing(segmentMin, segmentMax, rounding);
+			M3Draw.FocusRing(segmentMin, segmentMax, corners == ImDrawFlags.RoundCornersNone ? 0f : rounding, corners);
 
 			if (mouseOver)
 			{
@@ -129,7 +130,7 @@ public static partial class M3Widgets
 			}
 		}
 
-		drawList.AddRect(origin, origin + new Vector2(total, height), M3.U32(s.Outline, 0.65f),
+		drawList.AddRect(origin, origin + new Vector2(total, height), M3.U32(s.Outline, 0.65f * dim),
 			rounding, ImDrawFlags.RoundCornersAll, 1f * scale);
 
 		ImGui.SetCursorScreenPos(origin);

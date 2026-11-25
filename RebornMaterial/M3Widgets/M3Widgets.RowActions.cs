@@ -41,17 +41,18 @@ public static partial class M3Widgets
 	public static void RowValue(string label, string value, string? supporting = null, Vector4? color = null, bool enabled = true)
 	{
 		var display = RowParts(label, string.Empty).Label;
-		var maxWidth = M3SettingRow.MaxControlWidth() * 0.6f;
+		var fullMax = M3SettingRow.MaxControlWidth();
+		var sideMax = fullMax * 0.6f;
 		var singleLine = Vector2.Zero;
 		if (!string.IsNullOrEmpty(value) && !value.Contains('\n'))
 		{
 			singleLine = ImGui.CalcTextSize(value);
 		}
 
-		var fitsOnOneLine = singleLine.X > 0f && singleLine.X <= maxWidth;
+		var fitsOnOneLine = singleLine.X > 0f && singleLine.X <= sideMax;
 		var size = string.IsNullOrEmpty(value) ? Vector2.Zero
 			: fitsOnOneLine ? singleLine
-			: ImGui.CalcTextSize(value, false, maxWidth);
+			: ImGui.CalcTextSize(value, false, fullMax);
 		var width = MathF.Ceiling(size.X);
 
 		var row = M3SettingRow.Begin(display, supporting, new Vector2(width, size.Y), disabled: !enabled);

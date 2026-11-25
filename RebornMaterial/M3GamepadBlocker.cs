@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Dalamud.Game.ClientState.GamePad;
 using Dalamud.Hooking;
 using Dalamud.Utility.Signatures;
 using FFXIVClientStructs.FFXIV.Client.System.Input;
@@ -7,7 +8,13 @@ namespace RebornMaterial;
 
 internal sealed unsafe class M3GamepadBlocker : IDisposable
 {
+	private const long PadRetryMilliseconds = 1000;
+	private const long PolledFreshMilliseconds = 250;
+
 	private static M3GamepadBlocker? _instance;
+	private static long _lastPadRetryAt;
+	private static int _polledButtons;
+	private static long _polledAt;
 
 	private bool _movement;
 	private bool _camera;
@@ -67,8 +74,7 @@ internal sealed unsafe class M3GamepadBlocker : IDisposable
 			_instance._movement = movement;
 			_instance._camera = camera;
 			_instance._buttons = buttons;
-			_instance.Apply();
-			IsEnabled = true;
+			IsEnabled = _instance.Apply();
 		}
 		catch (Exception ex)
 		{
@@ -85,18 +91,66 @@ internal sealed unsafe class M3GamepadBlocker : IDisposable
 			return;
 		}
 
+		_instance._movement = false;
+		_instance._camera = false;
+		_instance._buttons = false;
 		_instance._walkHook?.Disable();
 		_instance._flyHook?.Disable();
 		_instance._cameraHook?.Disable();
 		_instance._padHook?.Disable();
+		Volatile.Write(ref _polledAt, 0);
 		IsEnabled = false;
 	}
 
 	public static void Dispose()
 	{
 		IsEnabled = false;
+		Volatile.Write(ref _polledAt, 0);
+		_lastPadRetryAt = 0;
 		_instance?.DisposeHooks();
 		_instance = null;
+	}
+
+	internal static void Tick()
+	{
+		if (_instance == null || !_instance._buttons || _instance._padHook != null)
+		{
+			return;
+		}
+
+		var now = Environment.TickCount64;
+		if (now - _lastPadRetryAt < PadRetryMilliseconds)
+		{
+			return;
+		}
+
+		_lastPadRetryAt = now;
+		try
+		{
+			_instance.EnsurePadHook();
+			if (_instance._padHook != null)
+			{
+				_instance._padHook.Enable();
+				IsEnabled = true;
+			}
+		}
+		catch (Exception ex)
+		{
+			M3Services.Log?.Warning($"[RebornMaterial] Controller button hook failed: {ex.Message}");
+		}
+	}
+
+	internal static bool TryReadButtons(out GamepadButtons buttons)
+	{
+		var polledAt = Volatile.Read(ref _polledAt);
+		if (polledAt > 0 && Environment.TickCount64 - polledAt < PolledFreshMilliseconds)
+		{
+			buttons = (GamepadButtons)Volatile.Read(ref _polledButtons);
+			return true;
+		}
+
+		buttons = GamepadButtons.None;
+		return false;
 	}
 
 	void IDisposable.Dispose()
@@ -104,8 +158,18 @@ internal sealed unsafe class M3GamepadBlocker : IDisposable
 		DisposeHooks();
 	}
 
-	private void Apply()
+	private bool Apply()
 	{
+		if (_movement && (_walkHook == null || _flyHook == null))
+		{
+			M3Services.Log?.Warning("[RebornMaterial] One or more controller movement hooks could not be resolved.");
+		}
+
+		if (_camera && _cameraHook == null)
+		{
+			M3Services.Log?.Warning("[RebornMaterial] Controller camera hook could not be resolved.");
+		}
+
 		Toggle(_walkHook, _movement);
 		Toggle(_flyHook, _movement);
 		Toggle(_cameraHook, _camera);
@@ -115,6 +179,9 @@ internal sealed unsafe class M3GamepadBlocker : IDisposable
 		}
 
 		Toggle(_padHook, _buttons);
+		return (_movement && (_walkHook != null || _flyHook != null))
+			|| (_camera && _cameraHook != null)
+			|| (_buttons && _padHook != null);
 	}
 
 	private static void Toggle<T>(Hook<T>? hook, bool enabled) where T : Delegate
@@ -197,12 +264,34 @@ internal sealed unsafe class M3GamepadBlocker : IDisposable
 	private nint PadPollDetour(PadDevice* self)
 	{
 		var result = _padHook!.Original(self);
+		ref var input = ref self->GamepadInputData;
+
+		var polled = GamepadButtons.None;
+		if (input.Square > 0) polled |= GamepadButtons.West;
+		if (input.Cross > 0) polled |= GamepadButtons.South;
+		if (input.Circle > 0) polled |= GamepadButtons.East;
+		if (input.Triangle > 0) polled |= GamepadButtons.North;
+		if (input.L1 > 0) polled |= GamepadButtons.L1;
+		if (input.R1 > 0) polled |= GamepadButtons.R1;
+		if (input.L2 > 0) polled |= GamepadButtons.L2;
+		if (input.R2 > 0) polled |= GamepadButtons.R2;
+		if (input.Start > 0) polled |= GamepadButtons.Start;
+		if (input.Select > 0) polled |= GamepadButtons.Select;
+		if (input.L3 > 0) polled |= GamepadButtons.L3;
+		if (input.R3 > 0) polled |= GamepadButtons.R3;
+		if (input.DPadLeft > 0) polled |= GamepadButtons.DpadLeft;
+		if (input.DPadRight > 0) polled |= GamepadButtons.DpadRight;
+		if (input.DPadUp > 0) polled |= GamepadButtons.DpadUp;
+		if (input.DPadDown > 0) polled |= GamepadButtons.DpadDown;
+
+		Volatile.Write(ref _polledButtons, (int)polled);
+		Volatile.Write(ref _polledAt, Environment.TickCount64);
+
 		if (!M3Gamepad.ShouldBlockGame)
 		{
 			return result;
 		}
 
-		ref var input = ref self->GamepadInputData;
 		input.Buttons = GamepadButtonsFlags.None;
 		input.ButtonsPressed = GamepadButtonsFlags.None;
 		input.ButtonsReleased = GamepadButtonsFlags.None;

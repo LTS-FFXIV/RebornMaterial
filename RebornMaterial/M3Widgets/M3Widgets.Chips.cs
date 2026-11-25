@@ -33,9 +33,9 @@ public static partial class M3Widgets
 		var size = new Vector2(ChipWidth(label, icon, trailingIcon, texture), height);
 		var tone = accent ?? s.Primary;
 
-		var pressed = ImGui.InvisibleButton(id, size) && enabled;
-		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var hovered = enabled && mouseOver;
+		var pressed = DisabledButton(id, size, enabled);
+		var mouseOver = ImGui.IsItemHovered(MouseOverFlags);
+		var hovered = IsHovered(enabled);
 		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();
@@ -123,18 +123,19 @@ public static partial class M3Widgets
 		}
 
 		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var highlight = interactive && hovered;
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();
 		var drawList = ImGui.GetWindowDrawList();
 		var rounding = size.Y * 0.5f;
 
-		if (interactive && hovered)
+		if (highlight)
 		{
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
 		}
 
-		drawList.AddRectFilled(min, max, M3.U32(accent, hovered ? 0.20f : 0.13f), rounding);
-		drawList.AddRect(min, max, M3.U32(accent, hovered ? 0.62f : 0.40f), rounding, ImDrawFlags.None, 1f * scale);
+		drawList.AddRectFilled(min, max, M3.U32(accent, highlight ? 0.20f : 0.13f), rounding);
+		drawList.AddRect(min, max, M3.U32(accent, highlight ? 0.62f : 0.40f), rounding, ImDrawFlags.None, 1f * scale);
 
 		var cursorX = min.X + (12f * scale);
 		if (icon == FontAwesomeIcon.None)
@@ -171,14 +172,15 @@ public static partial class M3Widgets
 		var scale = M3.Scale;
 		var height = M3.FitText(24f, 3f);
 		var width = ImGui.CalcTextSize(label).X + (12f * scale * 2f);
-		width += texture == null ? 12f * scale : height - (6f * scale);
+		width += M3Draw.Usable(texture) ? height - (6f * scale) : 12f * scale;
 		return new Vector2(width, height);
 	}
 
 	public static bool Pill(string id, string label, Vector4 accent, IDalamudTextureWrap? texture, string? tooltip = null, bool interactive = false)
 	{
 		var scale = M3.Scale;
-		var size = PillSize(label, texture);
+		var usable = M3Draw.Usable(texture);
+		var size = PillSize(label, usable ? texture : null);
 
 		var clicked = false;
 		if (interactive)
@@ -191,21 +193,22 @@ public static partial class M3Widgets
 		}
 
 		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var highlight = interactive && hovered;
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();
 		var drawList = ImGui.GetWindowDrawList();
 		var rounding = size.Y * 0.5f;
 
-		if (interactive && hovered)
+		if (highlight)
 		{
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
 		}
 
-		drawList.AddRectFilled(min, max, M3.U32(accent, hovered ? 0.20f : 0.13f), rounding);
-		drawList.AddRect(min, max, M3.U32(accent, hovered ? 0.62f : 0.40f), rounding, ImDrawFlags.None, 1f * scale);
+		drawList.AddRectFilled(min, max, M3.U32(accent, highlight ? 0.20f : 0.13f), rounding);
+		drawList.AddRect(min, max, M3.U32(accent, highlight ? 0.62f : 0.40f), rounding, ImDrawFlags.None, 1f * scale);
 
 		var cursorX = min.X + (12f * scale);
-		if (texture == null)
+		if (!usable)
 		{
 			var radius = 3f * scale;
 			drawList.AddCircleFilled(new Vector2(cursorX + radius, min.Y + (size.Y * 0.5f)), radius, M3.U32(accent), 12);
@@ -249,39 +252,45 @@ public static partial class M3Widgets
 		return width;
 	}
 
-	public static bool InputChip(string id, string label, out bool removed, FontAwesomeIcon icon = FontAwesomeIcon.None, string? tooltip = null, Vector4? accent = null)
+	public static bool InputChip(string id, string label, out bool removed, FontAwesomeIcon icon = FontAwesomeIcon.None, string? tooltip = null, Vector4? accent = null, bool enabled = true)
 	{
 		var s = M3.Scheme;
 		var scale = M3.Scale;
 		var height = ChipHeight;
 		var width = InputChipWidth(label, icon);
 		var removeWidth = InputChipRemoveWidth;
-		var tone = accent ?? s.Primary;
+		var tone = enabled ? accent ?? s.Primary : M3.Alpha(s.OnSurface, M3.DisabledContent);
 
-		var pressed = ImGui.InvisibleButton(id, new Vector2(width - removeWidth, height));
-		var bodyHovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var bodyHeld = ImGui.IsItemActive();
+		using var idScope = ImRaii.PushId(id);
+		var pressed = DisabledButton("##body", new Vector2(width - removeWidth, height), enabled);
+		var bodyMouseOver = ImGui.IsItemHovered(MouseOverFlags);
+		var bodyHovered = IsHovered(enabled);
+		var bodyHeld = enabled && ImGui.IsItemActive();
+		var bodyFocused = ImGui.IsItemFocused();
 		var min = ImGui.GetItemRectMin();
 		var max = min + new Vector2(width, height);
-		M3Draw.FocusRing(min, max, M3.ShapeSmall);
 
 		ImGui.SameLine(0f, 0f);
-		removed = ImGui.InvisibleButton($"{id}_remove", new Vector2(removeWidth, height));
-		var removeHovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var removeHeld = ImGui.IsItemActive();
-		M3Draw.FocusRing(ImGui.GetItemRectMin(), ImGui.GetItemRectMax(), height * 0.5f);
+		removed = DisabledButton("##remove", new Vector2(removeWidth, height), enabled);
+		var removeMouseOver = ImGui.IsItemHovered(MouseOverFlags);
+		var removeHovered = IsHovered(enabled);
+		var removeHeld = enabled && ImGui.IsItemActive();
+		var removeMin = ImGui.GetItemRectMin();
+		var removeMax = ImGui.GetItemRectMax();
+		var removeFocused = ImGui.IsItemFocused();
 
 		var drawList = ImGui.GetWindowDrawList();
 		var rounding = M3.ShapeSmall;
-		var content = s.OnSurfaceVariant;
+		var content = enabled ? s.OnSurfaceVariant : M3.Alpha(s.OnSurface, M3.DisabledContent);
+		var outline = enabled ? M3.Alpha(s.Outline, 0.8f) : M3.Alpha(s.OnSurface, M3.DisabledContainer);
 
 		var container = M3.Alpha(s.Surface, 0f);
-		if (bodyHovered || bodyHeld || removeHovered || removeHeld)
+		if (bodyHovered || bodyHeld)
 		{
-			container = M3.Alpha(s.OnSurface, bodyHeld || removeHeld ? M3.StatePressed : M3.StateHover);
+			container = M3.Alpha(s.OnSurface, bodyHeld ? M3.StatePressed : M3.StateHover);
 		}
 
-		M3Draw.Container(drawList, min, max, container, rounding, M3.Alpha(s.Outline, 0.8f), 1f);
+		M3Draw.Container(drawList, min, max, container, rounding, outline, 1f);
 
 		var cursorX = min.X + (12f * scale);
 		if (icon != FontAwesomeIcon.None)
@@ -294,7 +303,6 @@ public static partial class M3Widgets
 		var textSize = ImGui.CalcTextSize(label);
 		drawList.AddText(new Vector2(cursorX, min.Y + ((height - textSize.Y) * 0.5f)), M3.U32(content), label);
 
-		var removeMin = new Vector2(max.X - removeWidth, min.Y);
 		var removeCenter = removeMin + (new Vector2(removeWidth, height) * 0.5f);
 		if (removeHovered || removeHeld)
 		{
@@ -306,16 +314,27 @@ public static partial class M3Widgets
 		drawList.AddLine(removeCenter - new Vector2(arm, arm), removeCenter + new Vector2(arm, arm), crossColor, 1.5f * scale);
 		drawList.AddLine(removeCenter + new Vector2(-arm, arm), removeCenter + new Vector2(arm, -arm), crossColor, 1.5f * scale);
 
+		if (bodyFocused && ImGui.GetIO().NavVisible)
+		{
+			var gap = 2f * scale;
+			drawList.AddRect(min - new Vector2(gap), max + new Vector2(gap), M3.U32(s.Secondary), rounding + gap, ImDrawFlags.RoundCornersAll, 2.5f * scale);
+		}
+		else if (removeFocused && ImGui.GetIO().NavVisible)
+		{
+			var gap = 2f * scale;
+			drawList.AddRect(removeMin - new Vector2(gap), removeMax + new Vector2(gap), M3.U32(s.Secondary), (height * 0.5f) + gap, ImDrawFlags.RoundCornersAll, 2.5f * scale);
+		}
+
 		if (bodyHovered || removeHovered)
 		{
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
 		}
 
-		if (removeHovered)
+		if (removeMouseOver && enabled)
 		{
 			M3Tooltip.Show($"Remove {label}");
 		}
-		else if (bodyHovered)
+		else if (bodyMouseOver || removeMouseOver)
 		{
 			M3Tooltip.Show(tooltip);
 		}

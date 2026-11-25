@@ -73,14 +73,14 @@ public static class M3Plugins
 
 	internal static void Invalidate()
 	{
-		_loaded = null;
+		Volatile.Write(ref _loaded, null);
 	}
 
 	private static Dictionary<string, Version?> Loaded()
 	{
-		var loaded = _loaded;
+		var loaded = Volatile.Read(ref _loaded);
 		var now = Environment.TickCount64;
-		if (loaded != null && now - _loadedAt < SnapshotLifetimeMilliseconds)
+		if (loaded != null && now - Volatile.Read(ref _loadedAt) < SnapshotLifetimeMilliseconds)
 		{
 			return loaded;
 		}
@@ -100,8 +100,8 @@ public static class M3Plugins
 			}
 		}
 
-		_loadedAt = now;
-		_loaded = loaded;
+		Volatile.Write(ref _loadedAt, now);
+		Volatile.Write(ref _loaded, loaded);
 		return loaded;
 	}
 }

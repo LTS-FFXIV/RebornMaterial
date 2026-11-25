@@ -9,11 +9,13 @@ public static partial class M3Widgets
 		var s = M3.Scheme;
 		var scale = M3.Scale;
 		var height = M3.FitText(40f, 8f);
+		width = width > 0f ? width : MathF.Max(32f * scale, ImGui.GetContentRegionAvail().X);
 		var origin = ImGui.GetCursorScreenPos();
 		var drawList = ImGui.GetWindowDrawList();
 		var min = origin;
 		var max = origin + new Vector2(width, height);
-		var hoveringField = enabled && M3Draw.MouseOver(min, max);
+		var effectivelyEnabled = enabled && (ImGuiP.GetItemFlags() & ImGuiItemFlags.Disabled) == 0;
+		var hoveringField = effectivelyEnabled && M3Draw.MouseOver(min, max);
 
 		drawList.AddRectFilled(min, max, M3.U32(s.SurfaceContainerHigh, !enabled ? 0.5f : hoveringField ? 1f : 0.92f), height * 0.5f);
 
@@ -47,10 +49,18 @@ public static partial class M3Widgets
 			changed = ImGui.InputTextWithHint(id, hint, ref text, maxLength, ImGuiInputTextFlags.AutoSelectAll);
 		}
 
+		var focused = ImGui.IsItemActive();
+		if (focused)
+		{
+			M3.CaptureEscape();
+			drawList.AddRect(min, max, M3.U32(s.Primary, 0.85f), height * 0.5f, ImDrawFlags.RoundCornersAll, 1.5f * scale);
+		}
+
 		if (hasText)
 		{
+			using var idScope = ImRaii.PushId(id);
 			ImGui.SetCursorScreenPos(new Vector2(max.X - clearWidth - (6f * scale), min.Y + ((height - (26f * scale)) * 0.5f)));
-			if (IconButton($"{id}_clear", FontAwesomeIcon.Times, "Clear search", diameter: 26f * scale, enabled: enabled))
+			if (IconButton("##clear", FontAwesomeIcon.Times, "Clear search", diameter: 26f * scale, enabled: enabled))
 			{
 				text = string.Empty;
 				changed = true;
@@ -69,6 +79,7 @@ public static partial class M3Widgets
 		var s = M3.Scheme;
 		var scale = M3.Scale;
 		var height = TextFieldHeight;
+		width = width > 0f ? width : MathF.Max(32f * scale, ImGui.GetContentRegionAvail().X);
 		var paddingX = 16f * scale;
 		var framePadding = ImGui.GetStyle().FramePadding.X;
 		var bodyFontSize = ImGui.GetFontSize();
@@ -83,7 +94,8 @@ public static partial class M3Widgets
 		var min = origin + new Vector2(0f, smallFontSize * 0.5f);
 		var max = min + new Vector2(width, height);
 		var drawList = ImGui.GetWindowDrawList();
-		var hovered = M3Draw.MouseOver(min, max);
+		var effectivelyEnabled = enabled && (ImGuiP.GetItemFlags() & ImGuiItemFlags.Disabled) == 0;
+		var hovered = effectivelyEnabled && M3Draw.MouseOver(min, max);
 		var dim = enabled ? 1f : M3.DisabledContent;
 
 		var textLeft = min.X + paddingX;
@@ -110,25 +122,39 @@ public static partial class M3Widgets
 		}
 
 		var focused = ImGui.IsItemActive();
+		if (focused)
+		{
+			M3.CaptureEscape();
+		}
+
 		var floating = M3Motion.Approach(ImGuiP.GetItemID(), focused || !string.IsNullOrEmpty(text) ? 1f : 0f, M3Motion.FastDuration);
 
-		var accent = M3.Alpha(error ? s.Error : focused ? s.Primary : hovered && enabled ? s.OnSurface : s.Outline, dim);
+		var accent = M3.Alpha(error ? s.Error : focused ? s.Primary : hovered ? s.OnSurface : s.Outline, dim);
 		var labelColor = M3.Alpha(error ? s.Error : focused ? s.Primary : s.OnSurfaceVariant, dim);
 
+		var rounding = M3.ShapeExtraSmall;
 		var hasLabel = !string.IsNullOrEmpty(label);
 		var floatingX = min.X + paddingX;
-		var notchStart = floatingX - (4f * scale);
+		var maxNotchEnd = max.X - rounding;
+		var notchStart = MathF.Max(min.X + rounding, floatingX - (4f * scale));
+		var labelScale = bodyFontSize > 0f ? smallFontSize / bodyFontSize : 1f;
+		var maxLabelWidth = MathF.Max(8f * scale, maxNotchEnd - floatingX - (4f * scale));
+		var floatingLabel = hasLabel ? M3Navigation.Truncate(label, maxLabelWidth / MathF.Max(0.1f, labelScale)) : string.Empty;
 		var notchEnd = hasLabel
-			? notchStart + (((ImGui.CalcTextSize(label).X * (smallFontSize / bodyFontSize)) + (8f * scale)) * floating)
+			? MathF.Min(maxNotchEnd, notchStart + (((ImGui.CalcTextSize(floatingLabel).X * labelScale) + (8f * scale)) * floating))
 			: notchStart;
-		OutlineWithNotch(drawList, min, max, M3.ShapeExtraSmall, notchStart, notchEnd, M3.U32(accent), (focused || error ? 2f : 1f) * scale);
+		OutlineWithNotch(drawList, min, max, rounding, notchStart, notchEnd, M3.U32(accent), (focused || error ? 2f : 1f) * scale);
 
 		if (hasLabel)
 		{
 			var restingPosition = new Vector2(textLeft, min.Y + ((height - bodyFontSize) * 0.5f));
 			var floatingPosition = new Vector2(floatingX, min.Y - (smallFontSize * 0.5f));
-			drawList.AddText(ImGui.GetFont(), float.Lerp(bodyFontSize, smallFontSize, floating),
-				Vector2.Lerp(restingPosition, floatingPosition, floating), M3.U32(labelColor), label);
+			var labelPos = Vector2.Lerp(restingPosition, floatingPosition, floating);
+			var currentFontSize = float.Lerp(bodyFontSize, smallFontSize, floating);
+			var clipRight = float.Lerp(textRight, maxNotchEnd - (2f * scale), floating);
+			drawList.PushClipRect(new Vector2(min.X, origin.Y - (2f * scale)), new Vector2(MathF.Max(min.X + 1f, clipRight), max.Y), true);
+			drawList.AddText(ImGui.GetFont(), currentFontSize, labelPos, M3.U32(labelColor), floatingLabel);
+			drawList.PopClipRect();
 		}
 
 		if (error)
@@ -153,7 +179,7 @@ public static partial class M3Widgets
 
 	private static void OutlineWithNotch(ImDrawListPtr drawList, Vector2 min, Vector2 max, float rounding, float notchStart, float notchEnd, uint color, float thickness)
 	{
-		if (notchEnd - notchStart < 1f)
+		if (notchEnd - notchStart < 1f || notchEnd > max.X - rounding)
 		{
 			drawList.AddRect(min, max, color, rounding, ImDrawFlags.None, thickness);
 			return;

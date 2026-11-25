@@ -67,7 +67,7 @@ public static class M3Dialog
 			}
 			else
 			{
-				ImGui.TextWrapped(headline);
+				M3Draw.TextWrapped(headline);
 			}
 		}
 
@@ -75,7 +75,7 @@ public static class M3Dialog
 		{
 			ImGui.Dummy(new Vector2(0f, 8f * scale));
 			using var color = ImRaii.PushColor(ImGuiCol.Text, s.OnSurfaceVariant);
-			ImGui.TextWrapped(supporting);
+			M3Draw.TextWrapped(supporting);
 		}
 
 		ImGui.Dummy(new Vector2(0f, 8f * scale));

@@ -34,7 +34,7 @@ public static class M3Text
 		using var scope = Push(style);
 		if (wrap)
 		{
-			ImGui.TextWrapped(text);
+			M3Draw.TextWrapped(text);
 		}
 		else
 		{
@@ -56,7 +56,7 @@ public static class M3Text
 		ImGui.Indent(indent);
 		if (wrap)
 		{
-			ImGui.TextWrapped(text);
+			M3Draw.TextWrapped(text);
 		}
 		else
 		{

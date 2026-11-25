@@ -95,7 +95,15 @@ public static class M3Gamepad
 		_focusReported = false;
 		_focusBlocks = false;
 
+		M3GamepadBlocker.Tick();
+
 		_previous = _down;
+		if (M3GamepadBlocker.TryReadButtons(out var polled))
+		{
+			_down = polled;
+			return;
+		}
+
 		_down = GamepadButtons.None;
 		var state = M3Services.GamepadState;
 		if (state == null)

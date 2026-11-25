@@ -18,7 +18,16 @@ public abstract class M3Window(string name, ImGuiWindowFlags flags = ImGuiWindow
 	{
 		HoldCloseHotkey(M3.EscapeCaptured);
 		_theme = M3.IsInitialized ? M3Style.Push(Density) : default;
-		PreDrawThemed();
+		try
+		{
+			PreDrawThemed();
+		}
+		catch
+		{
+			_theme.Dispose();
+			_theme = default;
+			throw;
+		}
 	}
 
 	private void HoldCloseHotkey(bool hold)
@@ -52,6 +61,12 @@ public abstract class M3Window(string name, ImGuiWindowFlags flags = ImGuiWindow
 			_theme.Dispose();
 			_theme = default;
 		}
+	}
+
+	public override void OnClose()
+	{
+		HoldCloseHotkey(false);
+		base.OnClose();
 	}
 
 	protected virtual void PreDrawThemed()

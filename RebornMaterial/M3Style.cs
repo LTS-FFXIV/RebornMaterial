@@ -147,6 +147,11 @@ public static class M3Style
 		return new Scope(colors, vars, M3.PushBody(), previous);
 	}
 
+	internal static void Reset()
+	{
+		Density = M3Density.Comfortable;
+	}
+
 	public readonly struct Scope(int colors, int vars, M3.FontScope font, M3Density previous) : IDisposable
 	{
 		public void Dispose()

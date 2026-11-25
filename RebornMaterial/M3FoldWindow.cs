@@ -11,6 +11,7 @@ public abstract class M3FoldWindow : M3Window
 		| ImGuiWindowFlags.NoScrollWithMouse;
 
 	private static M3FoldWindow? _snackbarHost;
+	private static int _snackbarDrawnFrame = -1;
 
 	private readonly M3WindowFold _fold = new();
 	private readonly string _brandLabel;
@@ -112,8 +113,10 @@ public abstract class M3FoldWindow : M3Window
 			_snackbarHost = this;
 		}
 
-		if (_snackbarHost == this)
+		var frame = ImGui.GetFrameCount();
+		if (_snackbarHost == this && _snackbarDrawnFrame != frame)
 		{
+			_snackbarDrawnFrame = frame;
 			M3Snackbar.Draw(areaMin, areaMax);
 		}
 	}
@@ -185,5 +188,6 @@ public abstract class M3FoldWindow : M3Window
 	internal static void ResetSnackbarHost()
 	{
 		_snackbarHost = null;
+		_snackbarDrawnFrame = -1;
 	}
 }

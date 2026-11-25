@@ -28,12 +28,14 @@ public abstract class M3PanelWindow(string name, string title, Vector2 initialSi
 		{
 			if (body)
 			{
+				var cardDepth = M3Card.Depth;
 				try
 				{
 					DrawContents();
 				}
 				catch (Exception ex)
 				{
+					M3Card.RestoreDepth(cardDepth);
 					var error = $"{Title}: {ex.Message}";
 					if (error != _loggedError)
 					{
@@ -79,9 +81,16 @@ public abstract class M3PanelWindow(string name, string title, Vector2 initialSi
 		var textX = logoMin.X + logoSize + gap;
 		var textWidth = MathF.Max(0f, origin.X + width - pill.X - gap - textX);
 		var textY = origin.Y + ((height - textHeight) * 0.5f);
+		string clippedTitle;
 		using (ImRaii.PushFont(M3.TitleMedium))
 		{
-			drawList.AddText(new Vector2(textX, textY), M3.U32(s.OnSurface), M3Navigation.Truncate(title, textWidth));
+			clippedTitle = M3Navigation.Truncate(title, textWidth);
+			drawList.AddText(new Vector2(textX, textY), M3.U32(s.OnSurface), clippedTitle);
+		}
+
+		if (clippedTitle != title && M3Draw.MouseOver(new Vector2(textX, textY), new Vector2(textX + textWidth, textY + titleHeight)))
+		{
+			M3Tooltip.Show(title);
 		}
 
 		if (statusHeight > 0f)

@@ -16,7 +16,7 @@ public static partial class M3Widgets
 		var size = SwitchSize();
 
 		var changed = false;
-		if (ImGui.InvisibleButton(id, size) && enabled)
+		if (DisabledButton(id, size, enabled))
 		{
 			value = !value;
 			changed = true;
@@ -104,7 +104,7 @@ public static partial class M3Widgets
 		var hit = CheckboxHitSize();
 
 		var changed = false;
-		if (ImGui.InvisibleButton(id, hit) && enabled)
+		if (DisabledButton(id, hit, enabled))
 		{
 			value = !value;
 			changed = true;
@@ -131,6 +131,11 @@ public static partial class M3Widgets
 
 	private static float LabeledCheckboxWidthOf(float textWidth)
 	{
+		if (textWidth <= 0f)
+		{
+			return CheckboxHitSize().X;
+		}
+
 		var scale = M3.Scale;
 		return CheckboxSize().X + (12f * scale) + textWidth + (8f * scale);
 	}
@@ -145,21 +150,25 @@ public static partial class M3Widgets
 		var size = new Vector2(LabeledCheckboxWidthOf(textSize.X), MathF.Max(hit.Y, ImGui.GetFrameHeight()));
 
 		var changed = false;
-		if (ImGui.InvisibleButton(id, size) && enabled)
+		if (DisabledButton(id, size, enabled))
 		{
 			value = !value;
 			changed = true;
 		}
 
-		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var hovered = enabled && mouseOver;
+		var mouseOver = ImGui.IsItemHovered(MouseOverFlags);
+		var hovered = IsHovered(enabled);
 		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var drawList = ImGui.GetWindowDrawList();
 		DrawCheckbox(drawList, new Vector2(min.X + (hit.X * 0.5f), min.Y + (size.Y * 0.5f)), ImGuiP.GetItemID(), value, mixed, hovered, held, enabled);
 
-		drawList.AddText(new Vector2(min.X + hit.X + (4f * scale), min.Y + ((size.Y - textSize.Y) * 0.5f)),
-			M3.U32(s.OnSurface, enabled ? 0.95f : M3.DisabledContent), display);
+		if (!display.IsEmpty)
+		{
+			drawList.AddText(new Vector2(min.X + hit.X + (4f * scale), min.Y + ((size.Y - textSize.Y) * 0.5f)),
+				M3.U32(s.OnSurface, enabled ? 0.95f : M3.DisabledContent), display);
+		}
+
 		M3Draw.FocusRing(min, min + size, M3.ShapeSmall);
 
 		if (hovered)
@@ -228,7 +237,7 @@ public static partial class M3Widgets
 	{
 		var hit = RadioSize();
 
-		var pressed = ImGui.InvisibleButton(id, hit) && enabled;
+		var pressed = DisabledButton(id, hit, enabled);
 		var hovered = enabled && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
 		var held = enabled && ImGui.IsItemActive();
 		var center = ImGui.GetItemRectMin() + (hit * 0.5f);
@@ -268,9 +277,9 @@ public static partial class M3Widgets
 			}
 
 			ImGui.PushID(i);
-			var clicked = ImGui.InvisibleButton("##option", new Vector2(width, height));
+			var clicked = DisabledButton("##option", new Vector2(width, height), enabled);
 			ImGui.PopID();
-			if (clicked && enabled && !selected)
+			if (clicked && !selected)
 			{
 				result = i;
 			}

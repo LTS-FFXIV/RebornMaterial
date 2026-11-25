@@ -51,18 +51,24 @@ public static partial class M3Widgets
 		var gap = ChoicesGap;
 		var drawList = ImGui.GetWindowDrawList();
 		var dim = enabled ? 1f : M3.DisabledContent;
-		var perLine = ChoicesPerLine(maxWidth ?? ImGui.GetContentRegionAvail().X);
+		var availableWidth = maxWidth ?? ImGui.GetContentRegionAvail().X;
+		var perLine = ChoicesPerLine(availableWidth);
 		var origin = ImGui.GetCursorScreenPos();
 		var matched = false;
 		var changed = false;
+
+		using var idScope = ImRaii.PushId(id);
 
 		for (var i = 0; i < choices.Length; i++)
 		{
 			var choice = choices[i];
 			ImGui.SetCursorScreenPos(origin + new Vector2((i % perLine) * (diameter + gap), (i / perLine) * (diameter + gap)));
 
-			var pressed = ImGui.InvisibleButton($"{id}_{i}", new Vector2(diameter)) && enabled;
-			var hovered = enabled && ImGui.IsItemHovered();
+			ImGui.PushID(i);
+			var pressed = DisabledButton("##choice", new Vector2(diameter), enabled);
+			ImGui.PopID();
+			var mouseOver = ImGui.IsItemHovered(MouseOverFlags);
+			var hovered = IsHovered(enabled);
 			var held = enabled && ImGui.IsItemActive();
 			var min = ImGui.GetItemRectMin();
 			var max = ImGui.GetItemRectMax();
@@ -90,7 +96,7 @@ public static partial class M3Widgets
 
 			M3Draw.FocusRing(min, max, radius);
 
-			if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+			if (mouseOver)
 			{
 				M3Tooltip.Show(choice.Name);
 			}
@@ -109,11 +115,7 @@ public static partial class M3Widgets
 			ImGui.SetCursorScreenPos(swatchMin);
 
 			var own = color;
-			bool picked;
-			using (ImRaii.PushId(id))
-			{
-				picked = ColorSwatch("custom", ref own, alpha: alpha, enabled: enabled, tooltip: matched ? "Pick any colour" : "Your own colour. Click to change it.");
-			}
+			var picked = ColorSwatch("custom", ref own, alpha: alpha, enabled: enabled, tooltip: matched ? "Pick any colour" : "Your own colour. Click to change it.");
 
 			if (picked)
 			{
@@ -125,6 +127,16 @@ public static partial class M3Widgets
 			{
 				drawList.AddCircle(swatchMin + new Vector2(radius), radius + (3.5f * scale), M3.U32(s.OnSurface, dim), 32, 2f * scale);
 			}
+		}
+
+		var total = choices.Length + (custom ? 1 : 0);
+		if (total > 0)
+		{
+			var columns = Math.Min(total, perLine);
+			var gridWidth = (columns * diameter) + ((columns - 1) * gap);
+			var gridHeight = ChoicesHeight(total, availableWidth);
+			ImGui.SetCursorScreenPos(origin);
+			ImGui.Dummy(new Vector2(gridWidth, gridHeight));
 		}
 
 		return changed;

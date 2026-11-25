@@ -4,6 +4,8 @@ namespace RebornMaterial;
 
 public static class M3Tree
 {
+	private const int MaxTrackedNodes = 2048;
+
 	private static readonly Dictionary<uint, bool> _open = [];
 
 	public static float RowHeight => M3.FitText(32f, 6f);
@@ -21,7 +23,7 @@ public static class M3Tree
 		if (!_open.TryGetValue(key, out var open))
 		{
 			open = defaultOpen;
-			_open[key] = open;
+			StoreOpen(key, open);
 		}
 
 		var clicked = ImGui.InvisibleButton(id, new Vector2(width, height));
@@ -44,7 +46,7 @@ public static class M3Tree
 			if (toggle)
 			{
 				open = !open;
-				_open[key] = open;
+				StoreOpen(key, open);
 			}
 		}
 
@@ -64,8 +66,8 @@ public static class M3Tree
 		var chevronCenter = new Vector2(min.X + (ChevronSlot * 0.5f) + (2f * scale), min.Y + (height * 0.5f));
 		if (!leaf)
 		{
-			var turn = M3Motion.Approach(ImGui.GetID($"{id}_chevron"), open ? 1f : 0f, M3Motion.FastDuration);
-			DrawChevron(drawList, chevronCenter, turn, M3.Alpha(content, hovered ? 1f : 0.8f));
+			var turn = M3Motion.Approach(key ^ 0x9E3779B9u, open ? 1f : 0f, M3Motion.FastDuration);
+			M3Draw.Chevron(drawList, chevronCenter, turn, M3.Alpha(content, hovered ? 1f : 0.8f));
 		}
 
 		var x = min.X + ChevronSlot + (6f * scale);
@@ -82,13 +84,15 @@ public static class M3Tree
 		}
 
 		var trailingSize = string.IsNullOrEmpty(trailing) ? Vector2.Zero : ImGui.CalcTextSize(trailing);
-		var room = max.X - x - (8f * scale) - (trailingSize.X > 0f ? trailingSize.X + (12f * scale) : 0f);
+		var available = max.X - x - (8f * scale);
+		var showTrailing = trailingSize.X > 0f && available - trailingSize.X - (12f * scale) >= 24f * scale;
+		var room = available - (showTrailing ? trailingSize.X + (12f * scale) : 0f);
 		var text = M3Navigation.Truncate(label, MathF.Max(8f * scale, room));
 		var textSize = ImGui.CalcTextSize(text);
 		drawList.AddText(new Vector2(x, min.Y + ((height - textSize.Y) * 0.5f)),
 			M3.U32(color ?? (selected ? s.OnSecondaryContainer : s.OnSurface), 0.95f), text);
 
-		if (trailingSize.X > 0f)
+		if (showTrailing && trailing is not null)
 		{
 			drawList.AddText(new Vector2(max.X - (8f * scale) - trailingSize.X, min.Y + ((height - trailingSize.Y) * 0.5f)),
 				M3.U32(s.OnSurfaceVariant, 0.85f), trailing);
@@ -114,7 +118,7 @@ public static class M3Tree
 
 	public static void SetOpen(string id, bool open)
 	{
-		_open[ImGui.GetID(id)] = open;
+		StoreOpen(ImGui.GetID(id), open);
 	}
 
 	public static bool IsOpen(string id)
@@ -127,9 +131,14 @@ public static class M3Tree
 		_open.Clear();
 	}
 
-	private static void DrawChevron(ImDrawListPtr drawList, Vector2 center, float turn, Vector4 color)
+	private static void StoreOpen(uint key, bool open)
 	{
-		M3Draw.Chevron(drawList, center, turn, color);
+		if (_open.Count >= MaxTrackedNodes && !_open.ContainsKey(key))
+		{
+			_open.Clear();
+		}
+
+		_open[key] = open;
 	}
 
 	public readonly struct Scope(bool active, bool open, bool clicked, bool doubleClicked, bool rightClicked, float indent, float guideX, float guideTop) : IDisposable

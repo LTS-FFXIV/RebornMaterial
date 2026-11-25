@@ -1,12 +1,15 @@
 using Dalamud.Interface.Textures.TextureWraps;
+using Dalamud.Interface.Utility.Raii;
 
 namespace RebornMaterial;
 
 public static class M3Menu
 {
 	private const int StyleVars = 3;
+	private const int MaxTrackedSubs = 64;
 
-	private static readonly Dictionary<uint, Vector2> _subSizes = [];
+	private static readonly M3FrameCache<Vector2> _subSizes = new(MaxTrackedSubs);
+	private static uint _keyboardSub;
 	private static int _depth;
 	private static bool _closeAll;
 
@@ -41,22 +44,32 @@ public static class M3Menu
 	public static Scope BeginSub(string id, string label, FontAwesomeIcon icon = FontAwesomeIcon.None, bool enabled = true, IDalamudTextureWrap? texture = null)
 	{
 		var scale = M3.Scale;
-		var key = ImGui.GetID($"{id}_sub");
-		var open = ImGui.IsPopupOpen($"{id}_sub");
 		var parentMin = ImGui.GetWindowPos();
 		var parentMax = parentMin + ImGui.GetWindowSize();
 
-		var pressed = M3Widgets.MenuItemCore(id, label, false, icon, enabled, null, null, texture, false, true, open);
+		using var idScope = ImRaii.PushId(id);
+		var key = ImGui.GetID("##sub");
+		var open = ImGui.IsPopupOpen("##sub");
+
+		var pressed = M3Widgets.MenuItemCore("##item", label, false, icon, enabled, null, null, texture, false, true, open);
 		var rowHovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
 		var rowMin = ImGui.GetItemRectMin();
 		var rowMax = ImGui.GetItemRectMax();
 
 		if (enabled && !open && (pressed || rowHovered))
 		{
-			ImGui.OpenPopup($"{id}_sub");
+			ImGui.OpenPopup("##sub");
+			if (pressed && !rowHovered)
+			{
+				_keyboardSub = key;
+			}
+			else if (_keyboardSub == key)
+			{
+				_keyboardSub = 0;
+			}
 		}
 
-		var size = _subSizes.TryGetValue(key, out var known) ? known : new Vector2(200f * scale, 0f);
+		var size = _subSizes.TryGet(key, out var known) ? known : new Vector2(200f * scale, 0f);
 		var viewport = ImGui.GetWindowViewport();
 		var viewMin = viewport.WorkPos;
 		var viewMax = viewMin + viewport.WorkSize;
@@ -70,23 +83,36 @@ public static class M3Menu
 
 		ImGui.SetNextWindowPos(new Vector2(x, y));
 		PushStyle();
-		var scope = Finish(ImGui.BeginPopup($"{id}_sub"));
+		var scope = Finish(ImGui.BeginPopup("##sub"));
 		if (!scope.IsOpen)
 		{
+			if (_keyboardSub == key)
+			{
+				_keyboardSub = 0;
+			}
+
 			return scope;
 		}
 
 		if (!ImGui.IsWindowAppearing())
 		{
-			_subSizes[key] = ImGui.GetWindowSize();
+			_subSizes.Set(key, ImGui.GetWindowSize());
 		}
 
-		var mouse = ImGui.GetMousePos();
-		var overParent = mouse.X >= parentMin.X && mouse.X <= parentMax.X && mouse.Y >= parentMin.Y && mouse.Y <= parentMax.Y;
-		var overRow = mouse.Y >= rowMin.Y && mouse.Y <= rowMax.Y;
-		if (overParent && !overRow && !ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows))
+		if (_keyboardSub == key && ImGui.GetIO().MouseDelta.LengthSquared() > 0f)
 		{
-			ImGui.CloseCurrentPopup();
+			_keyboardSub = 0;
+		}
+
+		if (_keyboardSub != key)
+		{
+			var mouse = ImGui.GetMousePos();
+			var overParent = mouse.X >= parentMin.X && mouse.X <= parentMax.X && mouse.Y >= parentMin.Y && mouse.Y <= parentMax.Y;
+			var overRow = mouse.Y >= rowMin.Y && mouse.Y <= rowMax.Y;
+			if (overParent && !overRow && !ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows))
+			{
+				ImGui.CloseCurrentPopup();
+			}
 		}
 
 		return scope;
@@ -149,6 +175,7 @@ public static class M3Menu
 			return default;
 		}
 
+		M3.CaptureEscape();
 		_depth++;
 		return new Scope(true);
 	}
@@ -156,6 +183,7 @@ public static class M3Menu
 	internal static void Reset()
 	{
 		_subSizes.Clear();
+		_keyboardSub = 0;
 		_depth = 0;
 		_closeAll = false;
 	}

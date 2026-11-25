@@ -80,10 +80,15 @@ public sealed class M3HeroHeader
 		if (!M3Draw.Usable(image))
 		{
 			image = null;
+			_imageAspect = 0f;
 		}
 		else if (image is { Width: > 0, Height: > 0 })
 		{
 			_imageAspect = image.Width / (float)image.Height;
+		}
+		else
+		{
+			_imageAspect = 0f;
 		}
 
 		var height = _imageAspect > 0f
@@ -121,6 +126,7 @@ public sealed class M3HeroHeader
 		_particles.Clear();
 		_spawnTimer = 0f;
 		_warm = false;
+		_imageAspect = 0f;
 	}
 
 	private void DrawImage(ImDrawListPtr drawList, IDalamudTextureWrap image, Vector2 min, Vector2 max, float rounding)
@@ -143,7 +149,7 @@ public sealed class M3HeroHeader
 
 		drawList.AddImageRounded(image.Handle, min, max, uvMin, uvMax, M3.U32(Vector4.One), rounding, ImDrawFlags.RoundCornersTop);
 
-		var surface = ImGui.ColorConvertU32ToFloat4(ImGui.GetColorU32(ImGuiCol.WindowBg));
+		var surface = ImGui.GetStyle().Colors[(int)ImGuiCol.WindowBg];
 		var blendTop = max.Y - ((max.Y - min.Y) * Math.Clamp(ImageBlend, 0f, 1f));
 		EasedGradient(drawList, new Vector2(min.X, blendTop), max, surface with { W = 0f }, surface);
 	}
@@ -155,7 +161,7 @@ public sealed class M3HeroHeader
 
 		if (rounding > 0f)
 		{
-			drawList.AddRectFilled(min, new Vector2(max.X, min.Y + (rounding * 2f)), M3.U32(top), rounding, ImDrawFlags.RoundCornersTop);
+			drawList.AddRectFilled(min, new Vector2(max.X, min.Y + rounding), M3.U32(top), rounding, ImDrawFlags.RoundCornersTop);
 		}
 
 		M3Draw.VerticalGradient(drawList, new Vector2(min.X, min.Y + rounding), max, top, bottom);

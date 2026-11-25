@@ -26,8 +26,9 @@ public static partial class M3Widgets
 
 	public static int WindowActionsThatFit(int actionCount, float available, int minimum = 0)
 	{
-		var shown = actionCount;
-		while (shown > minimum && WindowActionsSize(shown).X > available)
+		var shown = Math.Max(0, actionCount);
+		var floor = Math.Max(0, minimum);
+		while (shown > floor && WindowActionsSize(shown).X > available)
 		{
 			shown--;
 		}
@@ -37,8 +38,9 @@ public static partial class M3Widgets
 
 	public static int WindowActionsThatFit(int actionCount, in M3WindowBrand brand, float available, int minimum = 0)
 	{
-		var shown = actionCount;
-		while (shown > minimum && WindowActionsSize(shown, brand, 0f).X > available)
+		var shown = Math.Max(0, actionCount);
+		var floor = Math.Max(0, minimum);
+		while (shown > floor && WindowActionsSize(shown, brand, 0f).X > available)
 		{
 			shown--;
 		}
@@ -77,7 +79,8 @@ public static partial class M3Widgets
 		var x = min.X + padding;
 		var y = min.Y + padding;
 
-		ImGui.PushClipRect(new Vector2(x, y), new Vector2(x + leading, y + buttonSize), true);
+		var clipPad = 4f * scale;
+		ImGui.PushClipRect(new Vector2(x, y - clipPad), new Vector2(x + leading, y + buttonSize + clipPad), true);
 		var actionsAlpha = Math.Clamp(1f - (minimized * 2f), 0f, 1f);
 		if (actionsAlpha > 0f)
 		{

@@ -24,9 +24,9 @@ public static partial class M3Widgets
 		var needed = leadWidth + (8f * scale) + ImGui.CalcTextSize(label).X + shortcutWidth + (16f * scale);
 		var width = fit ? MathF.Max(1f, available) : MathF.Max(available, needed);
 
-		var pressed = ImGui.InvisibleButton(id, new Vector2(width, height)) && enabled;
-		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var hovered = enabled && mouseOver;
+		var pressed = DisabledButton(id, new Vector2(width, height), enabled);
+		var mouseOver = ImGui.IsItemHovered(MouseOverFlags);
+		var hovered = IsHovered(enabled);
 		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();

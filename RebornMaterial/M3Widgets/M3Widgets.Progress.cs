@@ -63,8 +63,26 @@ public static partial class M3Widgets
 		var rounding = size.Y * 0.5f;
 		var gap = MathF.Min(4f * scale, size.Y);
 
-		const float Period = 2f;
-		var t = (float)(ImGui.GetTime() % Period) / Period;
+		if (M3.ReducedMotion)
+		{
+			var barMin = float.Lerp(min.X, max.X, 0.35f);
+			var barMax = float.Lerp(min.X, max.X, 0.65f);
+			if (barMin - gap - min.X > 0.5f)
+			{
+				drawList.AddRectFilled(min, new Vector2(barMin - gap, max.Y), M3.U32(s.SecondaryContainer), rounding);
+			}
+
+			drawList.AddRectFilled(new Vector2(barMin, min.Y), new Vector2(barMax, max.Y), M3.U32(s.Primary), rounding);
+			if (max.X - (barMax + gap) > 0.5f)
+			{
+				drawList.AddRectFilled(new Vector2(barMax + gap, min.Y), max, M3.U32(s.SecondaryContainer), rounding);
+			}
+
+			return;
+		}
+
+		var period = 2.0 * M3.MotionScale;
+		var t = (float)(ImGui.GetTime() % period / period);
 		Span<Vector2> segments =
 		[
 			new(Ease((t - 0.20f) / 0.60f), Ease(t / 0.55f)),
@@ -120,21 +138,26 @@ public static partial class M3Widgets
 			var gap = MathF.Min(0.1f, stroke * 1.5f / (MathF.Tau * radius));
 			if (value <= 0.001f)
 			{
-				M3Draw.Arc(drawList, center, radius, 0f, 1f, s.SecondaryContainer, stroke);
+				drawList.AddCircle(center, radius, M3.U32(s.SecondaryContainer), 48, stroke);
 				return;
 			}
 
-			if (value < 0.999f && 1f - value - (gap * 2f) > 0.001f)
+			if (value >= 0.999f)
 			{
-				M3Draw.Arc(drawList, center, radius, value + gap, 1f - gap, s.SecondaryContainer, stroke);
+				drawList.AddCircle(center, radius, M3.U32(s.Primary), 48, stroke);
+				return;
+			}
+
+			if (1f - value - (gap * 2f) > 0.001f)
+			{
+				var trackFrom = value + gap;
+				var trackTo = 1f - gap;
+				M3Draw.Arc(drawList, center, radius, trackFrom, trackTo, s.SecondaryContainer, stroke);
+				RoundCaps(drawList, center, radius, trackFrom, trackTo, s.SecondaryContainer, stroke);
 			}
 
 			M3Draw.Arc(drawList, center, radius, 0f, value, s.Primary, stroke);
-			if (value < 0.999f)
-			{
-				RoundCaps(drawList, center, radius, 0f, value, s.Primary, stroke);
-			}
-
+			RoundCaps(drawList, center, radius, 0f, value, s.Primary, stroke);
 			return;
 		}
 
@@ -143,10 +166,17 @@ public static partial class M3Widgets
 
 	public static void Spinner(ImDrawListPtr drawList, Vector2 center, float radius, Vector4 color, float stroke)
 	{
-		const double Cycle = 1.333;
-		var time = ImGui.GetTime();
-		var cycles = Math.Floor(time / Cycle);
-		var phase = (float)((time - (cycles * Cycle)) / Cycle);
+		if (M3.ReducedMotion)
+		{
+			M3Draw.Arc(drawList, center, radius, 0f, 0.35f, color, stroke);
+			RoundCaps(drawList, center, radius, 0f, 0.35f, color, stroke);
+			return;
+		}
+
+		const double BaseCycle = 1.333;
+		var time = ImGui.GetTime() / M3.MotionScale;
+		var cycles = Math.Floor(time / BaseCycle);
+		var phase = (float)((time - (cycles * BaseCycle)) / BaseCycle);
 		var head = Ease(phase / 0.5f) * 0.75f;
 		var tail = Ease((phase - 0.5f) / 0.5f) * 0.75f;
 		var start = ((float)(((time * 0.25) + (cycles * 0.75)) % 1.0) + tail) % 1f;

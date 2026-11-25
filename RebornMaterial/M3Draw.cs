@@ -15,7 +15,7 @@ public static class M3Draw
 	public static bool MouseOver(Vector2 min, Vector2 max, bool whileActive = false)
 	{
 		var flags = ImGuiHoveredFlags.ChildWindows | (whileActive ? ImGuiHoveredFlags.AllowWhenBlockedByActiveItem : ImGuiHoveredFlags.None);
-		return ImGui.IsMouseHoveringRect(min, max, false) && ImGui.IsWindowHovered(flags);
+		return ImGui.IsMouseHoveringRect(min, max, true) && ImGui.IsWindowHovered(flags);
 	}
 
 	public static bool Usable([NotNullWhen(true)] IDalamudTextureWrap? texture)
@@ -63,7 +63,7 @@ public static class M3Draw
 
 		for (var i = steps; i >= 1; i--)
 		{
-			var t = (float)i / steps;
+			var t = (float)i / (steps + 1);
 			var grow = spread * t;
 			var alpha = 0.16f * (1f - t) * (1f - t);
 			drawList.AddRectFilled(
@@ -208,7 +208,7 @@ public static class M3Draw
 		drawList.AddText(UiBuilder.IconFont, ImGui.GetFontSize() * scale, position, M3.U32(color), text);
 	}
 
-	public static void FocusRing(Vector2 min, Vector2 max, float rounding)
+	public static void FocusRing(Vector2 min, Vector2 max, float rounding, ImDrawFlags flags = ImDrawFlags.RoundCornersAll)
 	{
 		if (!ImGui.IsItemFocused() || !ImGui.GetIO().NavVisible)
 		{
@@ -218,7 +218,7 @@ public static class M3Draw
 		var scale = M3.Scale;
 		var gap = 2f * scale;
 		ImGui.GetWindowDrawList().AddRect(min - new Vector2(gap), max + new Vector2(gap), M3.U32(M3.Scheme.Secondary),
-			rounding + gap, ImDrawFlags.None, 2.5f * scale);
+			rounding + gap, flags, 2.5f * scale);
 	}
 
 	public static bool Texture(ImDrawListPtr drawList, IDalamudTextureWrap? texture, Vector2 min, float size, float alpha = 1f)
@@ -235,10 +235,11 @@ public static class M3Draw
 		return MouseOver(center - reach, center + reach);
 	}
 
-	public static void Chevron(ImDrawListPtr drawList, Vector2 center, float turn, Vector4 color, float arm = 0f)
+	public static void Chevron(ImDrawListPtr drawList, Vector2 center, float turn, Vector4 color, float arm = 0f, float thickness = 0f)
 	{
 		var scale = M3.Scale;
 		arm = arm > 0f ? arm : 3.5f * scale;
+		thickness = thickness > 0f ? thickness : MathF.Max(1f, 1.75f * scale);
 		var (sin, cos) = MathF.SinCos(turn * MathF.PI * 0.5f);
 
 		Vector2 Rotate(float px, float py)
@@ -247,9 +248,23 @@ public static class M3Draw
 		}
 
 		var tip = Rotate(arm * 0.6f, 0f);
-		var thickness = MathF.Max(1f, 1.75f * scale);
 		drawList.AddLine(Rotate(-arm * 0.6f, -arm), tip, M3.U32(color), thickness);
 		drawList.AddLine(tip, Rotate(-arm * 0.6f, arm), M3.U32(color), thickness);
+	}
+
+	public static void TextWrapped(string text)
+	{
+		var pushWrap = ImGuiP.GetCurrentWindow().DC.TextWrapPos < 0f;
+		if (pushWrap)
+		{
+			ImGui.PushTextWrapPos(0f);
+		}
+
+		ImGui.TextUnformatted(text);
+		if (pushWrap)
+		{
+			ImGui.PopTextWrapPos();
+		}
 	}
 
 	public static float WrappedText(string text, Vector2 position, float wrapWidth, Vector4 color)
@@ -263,6 +278,13 @@ public static class M3Draw
 		}
 
 		return ImGui.GetItemRectMax().Y;
+	}
+
+	internal static void Reset()
+	{
+		_glyphs.Clear();
+		_iconSizes.Clear();
+		_iconSizesFor = default;
 	}
 
 	private static float SmoothFade(float t)

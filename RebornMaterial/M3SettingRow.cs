@@ -67,7 +67,7 @@ public static class M3SettingRow
 
 	private static float MinLabelWidth => 120f * M3.Scale;
 
-	private static float RowWidth => MathF.Max(64f * M3.Scale, ImGui.GetContentRegionAvail().X - M3Card.RightInset);
+	private static float RowWidth => MathF.Max(64f * M3.Scale, ImGui.GetContentRegionAvail().X - (M3Card.Depth > 0 ? M3Card.RightInset : 0f));
 
 	private static float InnerWidth(float rowWidth, float iconWidth)
 	{
@@ -146,10 +146,11 @@ public static class M3SettingRow
 
 		ImGui.Dummy(new Vector2(width, height));
 		var max = ImGui.GetItemRectMax();
-		var hovered = ImGui.IsMouseHoveringRect(min, max, false) && ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows);
+		var isDisabled = disabled || (ImGuiP.GetItemFlags() & ImGuiItemFlags.Disabled) != 0;
+		var hovered = M3Draw.MouseOver(min, max);
 
 		var drawList = ImGui.GetWindowDrawList();
-		if (hovered)
+		if (hovered && !isDisabled)
 		{
 			drawList.AddRectFilled(min, max, M3.U32(s.OnSurface, 0.045f), M3.ShapeSmall);
 		}
@@ -232,7 +233,17 @@ public static class M3SettingRow
 
 			do
 			{
-				var cut = paragraph.IsEmpty ? 0 : Math.Clamp(font.CalcWordWrapPositionA(fontScale, paragraph, wrapWidth), 1, paragraph.Length);
+				var cut = paragraph.IsEmpty ? 0 : font.CalcWordWrapPositionA(fontScale, paragraph, wrapWidth);
+				if (!paragraph.IsEmpty && cut <= 0)
+				{
+					cut = 1;
+					while (cut < paragraph.Length && (paragraph[cut] & 0xC0) == 0x80)
+					{
+						cut++;
+					}
+				}
+
+				cut = Math.Min(cut, paragraph.Length);
 				var width = cut > 0 ? MathF.Min(ImGui.CalcTextSize(paragraph[..cut]).X, wrapWidth) : 0f;
 				if (width > 0f)
 				{
@@ -257,13 +268,13 @@ public static class M3SettingRow
 		ImGui.Dummy(new Vector2(row.Max.X - row.Min.X, 2f * M3.Scale));
 	}
 
-	public static bool NavigationRow(string id, string label, string? supporting, FontAwesomeIcon leadingIcon, FontAwesomeIcon trailingIcon, Vector4? accent = null)
+	public static bool NavigationRow(string id, string label, string? supporting, FontAwesomeIcon leadingIcon, FontAwesomeIcon trailingIcon, Vector4? accent = null, bool enabled = true)
 	{
 		var s = M3.Scheme;
 		var scale = M3.Scale;
 		var tone = accent ?? s.Primary;
 		var description = TakeDescription(label, ref supporting);
-		var width = MathF.Max(64f * scale, ImGui.GetContentRegionAvail().X - M3Card.RightInset);
+		var width = RowWidth;
 
 		var iconWidth = leadingIcon == FontAwesomeIcon.None ? 0f : M3Draw.MeasureIcon(leadingIcon).X + (12f * scale);
 		var trailingWidth = trailingIcon == FontAwesomeIcon.None ? 0f : M3Draw.MeasureIcon(trailingIcon).X + (12f * scale);
@@ -278,12 +289,20 @@ public static class M3SettingRow
 		}
 
 		var height = (PaddingY * 2f) + labelSize.Y + supportingHeight;
-		var pressed = ImGui.InvisibleButton(id, new Vector2(width, height));
-		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var held = ImGui.IsItemActive();
+		bool pressed;
+		using (ImRaii.PushStyle(ImGuiStyleVar.DisabledAlpha, 1f, !enabled))
+		using (ImRaii.Disabled(!enabled))
+		{
+			pressed = ImGui.InvisibleButton(id, new Vector2(width, height)) && enabled;
+		}
+
+		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem | ImGuiHoveredFlags.AllowWhenDisabled);
+		var hovered = enabled && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();
 		var drawList = ImGui.GetWindowDrawList();
+		var dim = enabled ? 1f : M3.DisabledContent;
 		M3Draw.FocusRing(min, max, M3.ShapeSmall);
 
 		if (hovered || held)
@@ -292,7 +311,7 @@ public static class M3SettingRow
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
 		}
 
-		if (hovered)
+		if (mouseOver)
 		{
 			M3Tooltip.Show(description);
 		}
@@ -301,16 +320,16 @@ public static class M3SettingRow
 		if (leadingIcon != FontAwesomeIcon.None)
 		{
 			var iconSize = M3Draw.MeasureIcon(leadingIcon);
-			M3Draw.Icon(drawList, leadingIcon, new Vector2(min.X + PaddingX, min.Y + PaddingY + ((labelSize.Y - iconSize.Y) * 0.5f)), tone);
+			M3Draw.Icon(drawList, leadingIcon, new Vector2(min.X + PaddingX, min.Y + PaddingY + ((labelSize.Y - iconSize.Y) * 0.5f)), M3.Alpha(tone, dim));
 		}
 
-		_ = M3Draw.WrappedText(label, new Vector2(textLeft, min.Y + PaddingY), textWidth, M3.Alpha(s.OnSurface, 0.95f));
+		_ = M3Draw.WrappedText(label, new Vector2(textLeft, min.Y + PaddingY), textWidth, M3.Alpha(s.OnSurface, 0.95f * dim));
 
 		if (!string.IsNullOrEmpty(supporting))
 		{
 			using var font = ImRaii.PushFont(M3.LabelSmall);
 			_ = M3Draw.WrappedText(supporting, new Vector2(textLeft, min.Y + PaddingY + labelSize.Y + (4f * scale)), textWidth,
-				M3.Alpha(s.OnSurfaceVariant, 0.85f));
+				M3.Alpha(s.OnSurfaceVariant, 0.85f * dim));
 		}
 
 		if (trailingIcon != FontAwesomeIcon.None)
@@ -318,7 +337,7 @@ public static class M3SettingRow
 			var iconSize = M3Draw.MeasureIcon(trailingIcon);
 			M3Draw.Icon(drawList, trailingIcon,
 				new Vector2(max.X - PaddingX - iconSize.X, min.Y + ((height - iconSize.Y) * 0.5f)),
-				M3.Alpha(s.OnSurfaceVariant, hovered ? 1f : 0.7f));
+				M3.Alpha(s.OnSurfaceVariant, (hovered ? 1f : 0.7f) * dim));
 		}
 
 		ImGui.SetCursorScreenPos(new Vector2(min.X, max.Y));

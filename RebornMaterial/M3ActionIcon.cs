@@ -1,5 +1,6 @@
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Textures.TextureWraps;
+using Dalamud.Interface.Utility.Raii;
 
 namespace RebornMaterial;
 
@@ -24,9 +25,15 @@ public static class M3ActionIcon
 		size = MathF.Max(size, 1f);
 		var extent = new Vector2(size, size);
 
-		var pressed = ImGui.InvisibleButton(id, extent) && enabled;
-		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var hovered = enabled && mouseOver;
+		bool pressed;
+		using (ImRaii.PushStyle(ImGuiStyleVar.DisabledAlpha, 1f, !enabled))
+		using (ImRaii.Disabled(!enabled))
+		{
+			pressed = ImGui.InvisibleButton(id, extent) && enabled;
+		}
+
+		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem | ImGuiHoveredFlags.AllowWhenDisabled);
+		var hovered = enabled && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
 		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = min + extent;
@@ -52,6 +59,8 @@ public static class M3ActionIcon
 			drawList.AddRectFilled(min, max, M3.U32(s.OnSurface, held ? M3.StatePressed : M3.StateHover), rounding);
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
 		}
+
+		M3Draw.FocusRing(min, max, rounding);
 
 		if (mouseOver)
 		{
@@ -99,7 +108,10 @@ public static class M3ActionIcon
 		if (cooldown.IsCoolingDown)
 		{
 			var recast = cooldown.RecastTime;
-			var elapsed = recast > 0f ? cooldown.Elapsed % recast : 0f;
+			var rawElapsed = MathF.Max(0f, cooldown.Elapsed);
+			var elapsed = recast <= 0f ? 0f
+				: cooldown.MaxCharges > 1 ? rawElapsed % recast
+				: Math.Clamp(rawElapsed, 0f, recast);
 
 			var usable = cooldown.MaxCharges > 1 && cooldown.CurrentCharges > 0;
 			drawList.AddRectFilled(min, max, M3.U32(s.Scrim, usable ? 0.25f : 0.6f), rounding);
@@ -131,8 +143,13 @@ public static class M3ActionIcon
 		var scale = M3.Scale;
 		var size = max.X - min.X;
 		var inset = 4f * scale;
+		var usableWidth = size - (inset * 2f);
+		if (usableWidth <= 2f)
+		{
+			return;
+		}
 
-		var radius = MathF.Min(MathF.Max(2f * scale, size * 0.045f), (size - (inset * 2f)) / (maximum * 3.2f));
+		var radius = MathF.Max(1f, MathF.Min(MathF.Max(2f * scale, size * 0.045f), usableWidth / (maximum * 3.2f)));
 		var gap = radius * 1.2f;
 		var rowWidth = (maximum * radius * 2f) + ((maximum - 1) * gap);
 		var y = max.Y - radius - inset;
@@ -153,7 +170,7 @@ public static class M3ActionIcon
 			}
 			else
 			{
-				drawList.AddCircle(pip, radius - (0.5f * scale), M3.U32(s.OnSurface, 0.6f), 12, 1f * scale);
+				drawList.AddCircle(pip, MathF.Max(0.5f, radius - (0.5f * scale)), M3.U32(s.OnSurface, 0.6f), 12, 1f * scale);
 			}
 		}
 	}

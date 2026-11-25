@@ -1,5 +1,6 @@
 using Dalamud.Game.ClientState.Keys;
 using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 
 namespace RebornMaterial;
 
@@ -23,6 +24,8 @@ public readonly record struct M3Hotkey(VirtualKey Key, bool Ctrl = false, bool S
 
 public static partial class M3Widgets
 {
+	private const int MaxHotkeyLabels = 256;
+
 	private static uint _listeningHotkey;
 	private static int _listeningFrame;
 	private static ImGuiKey[]? _hotkeyCandidates;
@@ -38,7 +41,10 @@ public static partial class M3Widgets
 		var s = M3.Scheme;
 		var scale = M3.Scale;
 		var height = HotkeyFieldHeight;
-		var key = ImGui.GetID(id);
+		using var idScope = ImRaii.PushId(id);
+		var key = ImGui.GetID("##hotkey");
+		var listenId = ImGui.GetID("##hotkey_listen");
+		var effectivelyEnabled = enabled && (ImGuiP.GetItemFlags() & ImGuiItemFlags.Disabled) == 0;
 		var frame = ImGui.GetFrameCount();
 		var listening = _listeningHotkey == key && _listeningFrame >= frame - 1;
 		if (_listeningHotkey == key && !listening)
@@ -53,14 +59,15 @@ public static partial class M3Widgets
 
 		var clearWidth = hotkey.IsEmpty || listening || width < height * 2f ? 0f : height;
 
-		var clicked = ImGui.InvisibleButton(id, new Vector2(MathF.Max(1f, width - clearWidth), height)) && enabled;
-		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var hovered = enabled && mouseOver;
+		var clicked = DisabledButton("##hotkey", new Vector2(MathF.Max(1f, width - clearWidth), height), enabled);
+		var mouseOver = ImGui.IsItemHovered(MouseOverFlags);
+		var hovered = IsHovered(enabled);
 		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = min + new Vector2(width, height);
-		M3Draw.FocusRing(min, ImGui.GetItemRectMax(), M3.ShapeSmall);
+		M3Draw.FocusRing(min, max, M3.ShapeSmall);
 
+		var changed = false;
 		if (clicked)
 		{
 			listening = !listening;
@@ -68,15 +75,14 @@ public static partial class M3Widgets
 			_listeningFrame = frame;
 			_heldModifier = VirtualKey.NO_KEY;
 		}
-
-		var changed = false;
-		if (listening)
+		else if (listening)
 		{
 			M3.CaptureEscape();
-			if (!enabled || ImGui.IsKeyPressed(ImGuiKey.Escape) || (ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !mouseOver))
+			if (!effectivelyEnabled || ImGui.IsKeyPressed(ImGuiKey.Escape) || ImGui.IsMouseClicked(ImGuiMouseButton.Left))
 			{
 				_listeningHotkey = 0;
 				listening = false;
+				_heldModifier = VirtualKey.NO_KEY;
 			}
 			else if (TryReadHotkey(modifiers, out var pressed))
 			{
@@ -93,6 +99,28 @@ public static partial class M3Widgets
 				_listeningHotkey = 0;
 				listening = false;
 			}
+		}
+
+		if (listening)
+		{
+			M3.CaptureEscape();
+			if (ImGuiP.GetActiveID() == listenId)
+			{
+				ImGuiP.KeepAliveID(listenId);
+			}
+			else
+			{
+				ImGuiP.SetActiveID(listenId, ImGuiP.GetCurrentWindow());
+			}
+
+			ImGuiP.SetActiveIdUsingNavAndKeys();
+			ImGui.SetNextFrameWantCaptureKeyboard(true);
+			ImGui.GetIO().WantTextInput = true;
+			ImGui.GetCurrentContext().WantTextInputNextFrame = 1;
+		}
+		else if (ImGuiP.GetActiveID() == listenId)
+		{
+			ImGuiP.ClearActiveID();
 		}
 
 		var drawList = ImGui.GetWindowDrawList();
@@ -114,7 +142,8 @@ public static partial class M3Widgets
 		textX += iconSize.X + (10f * scale);
 
 		var text = listening ? "Press a key" : HotkeyLabel(hotkey);
-		var color = listening ? M3.Alpha(s.Primary, 0.65f + (0.35f * MathF.Sin((float)ImGui.GetTime() * 5f)))
+		var pulseAlpha = M3.ReducedMotion ? 1f : 0.65f + (0.35f * MathF.Sin((float)(ImGui.GetTime() * (5.0 / M3.MotionScale))));
+		var color = listening ? M3.Alpha(s.Primary, pulseAlpha)
 			: hotkey.IsEmpty ? M3.Alpha(s.OnSurfaceVariant, 0.8f * dim)
 			: M3.Alpha(s.OnSurface, 0.95f * dim);
 		var display = M3Navigation.Truncate(text, MathF.Max(8f * scale, max.X - clearWidth - textX - (8f * scale)));
@@ -125,7 +154,7 @@ public static partial class M3Widgets
 		{
 			var diameter = height - (12f * scale);
 			ImGui.SetCursorScreenPos(new Vector2(max.X - clearWidth + ((clearWidth - diameter) * 0.5f), min.Y + ((height - diameter) * 0.5f)));
-			if (IconButton($"{id}_clear", FontAwesomeIcon.Times, "Clear", diameter: diameter, enabled: enabled))
+			if (IconButton("##clear", FontAwesomeIcon.Times, "Clear", diameter: diameter, enabled: enabled))
 			{
 				hotkey = M3Hotkey.None;
 				changed = true;
@@ -161,9 +190,10 @@ public static partial class M3Widgets
 	private static bool TryReadModifierKey(out VirtualKey key)
 	{
 		key = VirtualKey.NO_KEY;
-		var held = ImGui.IsKeyDown(ImGuiKey.LeftAlt) || ImGui.IsKeyDown(ImGuiKey.RightAlt) ? VirtualKey.MENU
-			: ImGui.IsKeyDown(ImGuiKey.LeftCtrl) || ImGui.IsKeyDown(ImGuiKey.RightCtrl) ? VirtualKey.CONTROL
-			: ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift) ? VirtualKey.SHIFT
+		var io = ImGui.GetIO();
+		var held = io.KeyAlt || ImGui.IsKeyDown(ImGuiKey.LeftAlt) || ImGui.IsKeyDown(ImGuiKey.RightAlt) ? VirtualKey.MENU
+			: io.KeyCtrl || ImGui.IsKeyDown(ImGuiKey.LeftCtrl) || ImGui.IsKeyDown(ImGuiKey.RightCtrl) ? VirtualKey.CONTROL
+			: io.KeyShift || ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift) ? VirtualKey.SHIFT
 			: VirtualKey.NO_KEY;
 		if (held != VirtualKey.NO_KEY)
 		{
@@ -221,7 +251,7 @@ public static partial class M3Widgets
 		var keys = new List<ImGuiKey>();
 		foreach (var key in Enum.GetValues<ImGuiKey>())
 		{
-			if (key >= ImGuiKey.Tab && key < ImGuiKey.GamepadStart && Array.IndexOf(skipped, key) < 0)
+			if (key >= ImGuiKey.Tab && key < ImGuiKey.GamepadStart && Array.IndexOf(skipped, key) < 0 && !keys.Contains(key))
 			{
 				keys.Add(key);
 			}
@@ -234,6 +264,11 @@ public static partial class M3Widgets
 	{
 		if (!_hotkeyLabels.TryGetValue(hotkey, out var label))
 		{
+			if (_hotkeyLabels.Count >= MaxHotkeyLabels)
+			{
+				_hotkeyLabels.Clear();
+			}
+
 			label = hotkey.ToString();
 			_hotkeyLabels[hotkey] = label;
 		}

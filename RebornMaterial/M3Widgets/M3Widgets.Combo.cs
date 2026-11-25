@@ -1,16 +1,19 @@
+using Dalamud.Interface.Textures.TextureWraps;
 using Dalamud.Interface.Utility.Raii;
 
 namespace RebornMaterial;
 
 public static partial class M3Widgets
 {
+	private const int MaxEnumLabels = 512;
+
 	public static float ComboHeight => M3.FitText(38f, 8f);
 
 	private static float ComboTextInset => 12f * M3.Scale;
 	private static float ComboChevronWidth => 24f * M3.Scale;
 
-	private static readonly Dictionary<uint, (int Count, float Widest)> _comboWidths = [];
-	private static readonly Dictionary<uint, string> _comboQueries = [];
+	private static readonly M3FrameCache<(int Count, float FontSize, float Widest)> _comboWidths = new(128);
+	private static readonly M3FrameCache<string> _comboQueries = new(64);
 	private static readonly List<int> _comboMatches = [];
 
 	private static void ResetCombos()
@@ -47,19 +50,21 @@ public static partial class M3Widgets
 		var scale = M3.Scale;
 		var label = index >= 0 && index < count ? itemLabel(state, index) : emptyText ?? string.Empty;
 
-		var key = ImGui.GetID($"{id}_menu");
-		var open = ImGui.IsPopupOpen($"{id}_menu");
+		using var idScope = ImRaii.PushId(id);
+		var key = ImGui.GetID("##menu");
+		var open = ImGui.IsPopupOpen("##menu");
 
-		var opening = ComboField(id, open, label, width, enabled, tooltip);
+		var opening = DrawDropdownField("##field", label, width, open, false, null, enabled, tooltip);
 		if (opening)
 		{
-			ImGui.OpenPopup($"{id}_menu");
+			ImGui.OpenPopup("##menu");
 		}
 
 		var popupWidth = MathF.Max(width, 160f * scale);
 		if (opening || open)
 		{
-			if (opening || !_comboWidths.TryGetValue(key, out var measured) || measured.Count != count)
+			var fontSize = ImGui.GetFontSize();
+			if (opening || !_comboWidths.TryGet(key, out var measured) || measured.Count != count || measured.FontSize != fontSize)
 			{
 				var widest = 0f;
 				for (var i = 0; i < count; i++)
@@ -67,8 +72,8 @@ public static partial class M3Widgets
 					widest = MathF.Max(widest, ImGui.CalcTextSize(itemLabel(state, i)).X);
 				}
 
-				measured = (count, widest);
-				_comboWidths[key] = measured;
+				measured = (count, fontSize, widest);
+				_comboWidths.Set(key, measured);
 			}
 
 			var scrollbar = count * MenuItemHeight > 360f * scale ? ImGui.GetStyle().ScrollbarSize : 0f;
@@ -77,7 +82,7 @@ public static partial class M3Widgets
 
 		popupWidth = MathF.Min(popupWidth, 560f * scale);
 		ImGui.SetNextWindowSizeConstraints(new Vector2(popupWidth, 0f), new Vector2(popupWidth, 460f * scale));
-		using var menu = M3Menu.Begin($"{id}_menu");
+		using var menu = M3Menu.Begin("##menu");
 		if (!menu.IsOpen)
 		{
 			return false;
@@ -87,7 +92,7 @@ public static partial class M3Widgets
 		var pickFirst = false;
 		if (search)
 		{
-			_ = _comboQueries.TryGetValue(key, out query);
+			_ = _comboQueries.TryGet(key, out query);
 			query ??= string.Empty;
 			if (ImGui.IsWindowAppearing())
 			{
@@ -98,7 +103,7 @@ public static partial class M3Widgets
 			var typing = ImGuiP.GetActiveID() == ImGui.GetID("##search");
 			_ = SearchField("##search", "Search", ref query, ImGui.GetContentRegionAvail().X);
 			pickFirst = typing && (ImGui.IsKeyPressed(ImGuiKey.Enter) || ImGui.IsKeyPressed(ImGuiKey.KeypadEnter));
-			_comboQueries[key] = query;
+			_comboQueries.Set(key, query);
 			ImGui.Dummy(new Vector2(0f, M3.Space1));
 		}
 
@@ -157,23 +162,32 @@ public static partial class M3Widgets
 		}
 
 		var clipper = ImGui.ImGuiListClipper();
-		clipper.Begin(_comboMatches.Count, rowHeight);
-		while (clipper.Step())
+		try
 		{
-			for (var row = clipper.DisplayStart; row < clipper.DisplayEnd; row++)
+			clipper.Begin(_comboMatches.Count, rowHeight);
+			while (clipper.Step())
 			{
-				var i = _comboMatches[row];
-				if (MenuItemCore($"##item{i}", itemLabel(state, i), i == index, FontAwesomeIcon.None, itemEnabled?.Invoke(state, i) ?? true, null, itemTooltip?.Invoke(state, i), null, true))
+				for (var row = clipper.DisplayStart; row < clipper.DisplayEnd; row++)
 				{
-					index = i;
-					changed = true;
-					ImGui.CloseCurrentPopup();
+					var i = _comboMatches[row];
+					ImGui.PushID(i);
+					var picked = MenuItemCore("##item", itemLabel(state, i), i == index, FontAwesomeIcon.None, itemEnabled?.Invoke(state, i) ?? true, null, itemTooltip?.Invoke(state, i), null, true);
+					ImGui.PopID();
+					if (picked)
+					{
+						index = i;
+						changed = true;
+						ImGui.CloseCurrentPopup();
+					}
 				}
 			}
 		}
+		finally
+		{
+			clipper.End();
+			clipper.Destroy();
+		}
 
-		clipper.End();
-		clipper.Destroy();
 		return changed;
 	}
 
@@ -212,15 +226,15 @@ public static partial class M3Widgets
 		return true;
 	}
 
-	private static bool ComboField(string id, bool open, string label, float width, bool enabled, string? tooltip)
+	internal static bool DrawDropdownField(string id, string label, float width, bool open, bool placeholder, IDalamudTextureWrap? icon, bool enabled, string? tooltip)
 	{
 		var s = M3.Scheme;
 		var scale = M3.Scale;
 		var height = ComboHeight;
 
-		var clicked = ImGui.InvisibleButton(id, new Vector2(width, height)) && enabled;
-		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var hovered = enabled && mouseOver;
+		var clicked = DisabledButton(id, new Vector2(MathF.Max(1f, width), height), enabled);
+		var mouseOver = ImGui.IsItemHovered(MouseOverFlags);
+		var hovered = IsHovered(enabled);
 		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();
@@ -232,27 +246,33 @@ public static partial class M3Widgets
 		if (hovered || held)
 		{
 			fill = M3.StateLayer(fill, s.OnSurface, hovered, held);
+			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
 		}
 
 		drawList.AddRectFilled(min, max, M3.U32(fill), rounding);
 		drawList.AddRect(min, max, M3.U32(open ? s.Primary : s.Outline, (open ? 1f : 0.75f) * dim), rounding, ImDrawFlags.None, (open ? 2f : 1f) * scale);
 
-		var textWidth = MathF.Max(8f * scale, width - (ComboTextInset * 2f) - ComboChevronWidth);
-		var display = M3Navigation.Truncate(label, textWidth);
-		var textSize = ImGui.CalcTextSize(display);
-		drawList.AddText(new Vector2(min.X + ComboTextInset, min.Y + ((height - textSize.Y) * 0.5f)), M3.U32(s.OnSurface, 0.95f * dim), display);
+		var x = min.X + ComboTextInset;
+		if (icon != null)
+		{
+			var iconSize = MathF.Min(height - (12f * scale), ImGui.GetTextLineHeight() + (4f * scale));
+			if (M3Draw.Texture(drawList, icon, new Vector2(x, min.Y + ((height - iconSize) * 0.5f)), iconSize, dim))
+			{
+				x += iconSize + (8f * scale);
+			}
+		}
 
-		var chevronCenter = new Vector2(max.X - (16f * scale), min.Y + (height * 0.5f));
+		var display = M3Navigation.Truncate(label, MathF.Max(8f * scale, max.X - x - ComboChevronWidth - ComboTextInset));
+		var textSize = ImGui.CalcTextSize(display);
+		var textColor = placeholder ? s.OnSurfaceVariant : s.OnSurface;
+		drawList.AddText(new Vector2(x, min.Y + ((height - textSize.Y) * 0.5f)), M3.U32(textColor, 0.95f * dim), display);
+
+		var chevron = new Vector2(max.X - (16f * scale), min.Y + (height * 0.5f));
 		var arm = 4.5f * scale;
 		var chevronColor = M3.U32(s.OnSurfaceVariant, (hovered || open ? 1f : 0.8f) * dim);
-		drawList.AddLine(chevronCenter + new Vector2(-arm, -arm * 0.5f), chevronCenter + new Vector2(0f, arm * 0.6f), chevronColor, 2f * scale);
-		drawList.AddLine(chevronCenter + new Vector2(0f, arm * 0.6f), chevronCenter + new Vector2(arm, -arm * 0.5f), chevronColor, 2f * scale);
+		drawList.AddLine(chevron + new Vector2(-arm, -arm * 0.5f), chevron + new Vector2(0f, arm * 0.6f), chevronColor, 2f * scale);
+		drawList.AddLine(chevron + new Vector2(0f, arm * 0.6f), chevron + new Vector2(arm, -arm * 0.5f), chevronColor, 2f * scale);
 		M3Draw.FocusRing(min, max, rounding);
-
-		if (hovered)
-		{
-			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-		}
 
 		if (mouseOver)
 		{
@@ -294,6 +314,11 @@ public static partial class M3Widgets
 		if (_enumLabels.TryGetValue(value, out var cached))
 		{
 			return cached;
+		}
+
+		if (_enumLabels.Count >= MaxEnumLabels)
+		{
+			_enumLabels.Clear();
 		}
 
 		var name = value.ToString();

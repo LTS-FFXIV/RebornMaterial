@@ -16,7 +16,6 @@ public static class M3Fonts
 		public ImFontPtr Resolved { get; set; }
 	}
 
-	private static readonly Lock _lock = new();
 	private static readonly Dictionary<int, CachedFont> _handles = [];
 	private static readonly Dictionary<int, CachedFont> _defaultHandles = [];
 
@@ -39,31 +38,28 @@ public static class M3Fonts
 	private static ImFontPtr Resolve(Dictionary<int, CachedFont> cache, int capacity, int key, Func<int, IFontHandle> create)
 	{
 		var frame = ImGui.GetFrameCount();
-		lock (_lock)
+		if (!cache.TryGetValue(key, out var cached))
 		{
-			if (!cache.TryGetValue(key, out var cached))
-			{
-				Evict(cache, capacity - 1, frame);
-				cached = new CachedFont(create(key));
-				cache[key] = cached;
-			}
-
-			cached.LastUsedFrame = frame;
-			if (cached.ResolvedFrame == frame)
-			{
-				return cached.Resolved;
-			}
-
-			var font = Loaded(cached.Handle) ?? Nearest(cache, key, frame);
-			if (font is not { } found)
-			{
-				return ImGui.GetFont();
-			}
-
-			cached.Resolved = found;
-			cached.ResolvedFrame = frame;
-			return found;
+			Evict(cache, capacity - 1, frame);
+			cached = new CachedFont(create(key));
+			cache[key] = cached;
 		}
+
+		cached.LastUsedFrame = frame;
+		if (cached.ResolvedFrame == frame)
+		{
+			return cached.Resolved;
+		}
+
+		var font = Loaded(cached.Handle) ?? Nearest(cache, key, frame);
+		if (font is not { } found)
+		{
+			return ImGui.GetFont();
+		}
+
+		cached.Resolved = found;
+		cached.ResolvedFrame = frame;
+		return found;
 	}
 
 	private static ImFontPtr? Nearest(Dictionary<int, CachedFont> cache, int key, int frame)
@@ -137,21 +133,18 @@ public static class M3Fonts
 
 	public static void DisposeAll()
 	{
-		lock (_lock)
+		foreach (var cached in _handles.Values)
 		{
-			foreach (var cached in _handles.Values)
-			{
-				cached.Handle.Dispose();
-			}
-
-			_handles.Clear();
-
-			foreach (var cached in _defaultHandles.Values)
-			{
-				cached.Handle.Dispose();
-			}
-
-			_defaultHandles.Clear();
+			cached.Handle.Dispose();
 		}
+
+		_handles.Clear();
+
+		foreach (var cached in _defaultHandles.Values)
+		{
+			cached.Handle.Dispose();
+		}
+
+		_defaultHandles.Clear();
 	}
 }

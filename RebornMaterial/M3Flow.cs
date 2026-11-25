@@ -3,7 +3,7 @@ namespace RebornMaterial;
 public struct M3Flow(float? gap = null, float? width = null)
 {
 	private readonly float _gap = gap ?? M3.Space2;
-	private readonly float _available = width ?? ImGui.GetContentRegionAvail().X;
+	private readonly float _available = width ?? MathF.Max(1f, ImGui.GetContentRegionAvail().X - (M3Card.Depth > 0 ? M3Card.RightInset : 0f));
 	private float _used;
 
 	public M3Flow()

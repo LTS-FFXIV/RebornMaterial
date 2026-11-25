@@ -86,6 +86,7 @@ public sealed class M3WindowFold
 
 	public void Reset()
 	{
+		_pendingMinimize = false;
 		if (!_layout)
 		{
 			return;

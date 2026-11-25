@@ -31,6 +31,7 @@ public static class M3Snackbar
 			return;
 		}
 
+		var safeDuration = float.IsFinite(duration) ? MathF.Max(1f, duration) : ShortDuration;
 		lock (_lock)
 		{
 			while (_queue.Count >= MaxQueued)
@@ -38,7 +39,7 @@ public static class M3Snackbar
 				_ = _queue.Dequeue();
 			}
 
-			_queue.Enqueue(new Entry(message, actionLabel, onAction, MathF.Max(1f, duration), severity, Environment.TickCount64));
+			_queue.Enqueue(new Entry(message, actionLabel, onAction, safeDuration, severity, Environment.TickCount64));
 		}
 	}
 
@@ -91,20 +92,21 @@ public static class M3Snackbar
 			}
 		}
 
-		var entry = _current;
-		if (entry == null)
+		Entry? entry;
+		lock (_lock)
 		{
-			lock (_lock)
+			entry = _current;
+			if (entry == null)
 			{
 				if (!_queue.TryDequeue(out entry))
 				{
 					return;
 				}
-			}
 
-			_current = entry;
-			_age = 0f;
-			_remaining = entry.Duration;
+				_current = entry;
+				_age = 0f;
+				_remaining = entry.Duration;
+			}
 		}
 
 		var frame = ImGui.GetFrameCount();
@@ -120,14 +122,24 @@ public static class M3Snackbar
 			}
 		}
 
-		if (_remaining <= -FadeDuration)
+		var fadeDuration = M3Motion.Scaled(FadeDuration);
+		if (_remaining <= -fadeDuration)
 		{
-			_current = null;
+			lock (_lock)
+			{
+				if (ReferenceEquals(_current, entry))
+				{
+					_current = null;
+				}
+			}
+
 			_hovered = false;
 			return;
 		}
 
-		var alpha = MathF.Min(Math.Clamp(_age / FadeDuration, 0f, 1f), Math.Clamp(1f + (_remaining / FadeDuration), 0f, 1f));
+		var alpha = fadeDuration <= 0f
+			? 1f
+			: MathF.Min(Math.Clamp(_age / fadeDuration, 0f, 1f), Math.Clamp(1f + (_remaining / fadeDuration), 0f, 1f));
 
 		var s = M3.Scheme;
 		var scale = M3.Scale;

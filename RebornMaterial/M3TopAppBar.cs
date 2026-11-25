@@ -48,10 +48,23 @@ public static class M3TopAppBar
 			drawList.AddText(new Vector2(min.X, textTop), M3.U32(s.OnSurface, 0.98f), clippedTitle);
 		}
 
+		if (clippedTitle != title && M3Draw.MouseOver(new Vector2(min.X, textTop), new Vector2(min.X + textWidth, textTop + titleSize.Y)))
+		{
+			M3Tooltip.Show(title);
+		}
+
 		if (subtitleSize.Y > 0f)
 		{
-			using var font = ImRaii.PushFont(M3.LabelSmall);
-			drawList.AddText(new Vector2(min.X, textTop + titleSize.Y + lineGap), M3.U32(s.OnSurfaceVariant, 0.88f), clippedSubtitle);
+			var subtitleY = textTop + titleSize.Y + lineGap;
+			using (ImRaii.PushFont(M3.LabelSmall))
+			{
+				drawList.AddText(new Vector2(min.X, subtitleY), M3.U32(s.OnSurfaceVariant, 0.88f), clippedSubtitle);
+			}
+
+			if (clippedSubtitle != subtitle && M3Draw.MouseOver(new Vector2(min.X, subtitleY), new Vector2(min.X + textWidth, subtitleY + subtitleSize.Y)))
+			{
+				M3Tooltip.Show(subtitle);
+			}
 		}
 
 		return new Scope(min, max, shown, (height - barSize.Y) * 0.5f, max.X - barSize.X - trailingWidth, gap ?? M3.Space2);
@@ -74,6 +87,11 @@ public static class M3TopAppBar
 
 		public void Dispose()
 		{
+			if (max.X <= min.X)
+			{
+				return;
+			}
+
 			ImGui.SetCursorScreenPos(new Vector2(min.X, max.Y));
 			ImGui.GetWindowDrawList().AddLine(new Vector2(min.X, max.Y), max, M3.U32(M3.Scheme.OutlineVariant, 0.5f), 1f * M3.Scale);
 			ImGui.Dummy(new Vector2(max.X - min.X, gap));

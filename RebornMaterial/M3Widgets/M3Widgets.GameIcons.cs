@@ -21,9 +21,9 @@ public static partial class M3Widgets
 	{
 		var s = M3.Scheme;
 		var scale = M3.Scale;
-		var pressed = ImGui.InvisibleButton(id, new Vector2(size)) && enabled;
-		var mouseOver = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-		var hovered = enabled && mouseOver;
+		var pressed = DisabledButton(id, new Vector2(size), enabled);
+		var mouseOver = ImGui.IsItemHovered(MouseOverFlags);
+		var hovered = IsHovered(enabled);
 		var held = enabled && ImGui.IsItemActive();
 		var min = ImGui.GetItemRectMin();
 		var max = ImGui.GetItemRectMax();

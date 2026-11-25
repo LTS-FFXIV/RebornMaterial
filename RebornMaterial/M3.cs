@@ -11,6 +11,7 @@ public static class M3
 	private static IDalamudPluginInterface? _pluginInterface;
 
 	private static Vector4 _configuredSeed = DefaultSeed;
+	private static bool _configuredLight;
 	private static M3Scheme _scheme = M3Scheme.FromSeed(DefaultSeed);
 
 	private static float _windowScale = 1f;
@@ -23,7 +24,10 @@ public static class M3
 
 	private static float _motionScale = 1f;
 
+	private static int _pushedBodyDepth;
+
 	private static int _escapeFrame = -2;
+	private static int _beginFrame = -1;
 
 	private const int MaxCustomColors = 128;
 	private static readonly Dictionary<(Vector4 Color, bool Harmonize), M3ColorRoles> _customColors = [];
@@ -70,10 +74,24 @@ public static class M3
 		M3Menu.Reset();
 		M3Tree.Reset();
 		M3Navigation.Reset();
+		M3Draw.Reset();
+		M3Style.Reset();
 		M3Tooltip.Handler = null;
 		_customColors.Clear();
 		_customColorScheme = null;
+		_configuredSeed = DefaultSeed;
+		_configuredLight = false;
+		_scheme = M3Scheme.FromSeed(DefaultSeed);
+		_windowScale = 1f;
+		_textScale = 1f;
+		_elementScale = 1f;
+		_paddingScale = 1f;
+		_motionScale = 1f;
+		_pushedBodyDepth = 0;
 		_escapeFrame = -2;
+		_beginFrame = -1;
+		ElementBaseline = 1f;
+		Settings = new M3Settings();
 		if (_pluginInterface != null)
 		{
 			_pluginInterface.ActivePluginsChanged -= OnActivePluginsChanged;
@@ -93,6 +111,13 @@ public static class M3
 
 	public static void BeginFrame()
 	{
+		var frame = ImGui.GetFrameCount();
+		if (frame == _beginFrame)
+		{
+			return;
+		}
+
+		_beginFrame = frame;
 		if (!ImGui.IsAnyItemActive())
 		{
 			ReadSizes();
@@ -152,7 +177,8 @@ public static class M3
 	public static WindowScaleScope PushWindowScale(float scale)
 	{
 		var previous = _windowScale;
-		_windowScale = previous * Math.Clamp(scale, 0.1f, 10f);
+		var clamped = float.IsFinite(scale) ? Math.Clamp(scale, 0.1f, 10f) : 1f;
+		_windowScale = previous * clamped;
 		return new WindowScaleScope(previous);
 	}
 
@@ -161,12 +187,19 @@ public static class M3
 		get
 		{
 			var seed = Settings.UiAccentColor;
-			if (seed.X != _configuredSeed.X || seed.Y != _configuredSeed.Y || seed.Z != _configuredSeed.Z)
+			if (!float.IsFinite(seed.X) || !float.IsFinite(seed.Y) || !float.IsFinite(seed.Z))
+			{
+				seed = DefaultSeed;
+			}
+
+			var light = Settings.UiLightTheme;
+			if (seed.X != _configuredSeed.X || seed.Y != _configuredSeed.Y || seed.Z != _configuredSeed.Z || light != _configuredLight)
 			{
 				_configuredSeed = seed;
+				_configuredLight = light;
 
 				M3ColorMath.ToLch(seed, out var lightness, out var chroma, out _);
-				_scheme = M3Scheme.FromSeed(lightness < 5f || chroma < 2f ? DefaultSeed : seed);
+				_scheme = M3Scheme.FromSeed(!float.IsFinite(lightness) || !float.IsFinite(chroma) || lightness < 5f || chroma < 2f ? DefaultSeed : seed, light);
 			}
 
 			return _scheme;
@@ -190,20 +223,21 @@ public static class M3
 	public const float DisabledContainer = 0.12f;
 
 	public static ImFontPtr Body => M3Fonts.GetDefaultFont(TextScale);
-	public static ImFontPtr HeadlineSmall => M3Fonts.GetFont(22f * TextScale);
-	public static ImFontPtr TitleLarge => M3Fonts.GetFont(19f * TextScale);
-	public static ImFontPtr TitleMedium => M3Fonts.GetFont(16f * TextScale);
-	public static ImFontPtr LabelSmall => M3Fonts.GetFont(11f * TextScale);
+	public static ImFontPtr HeadlineSmall => M3Fonts.GetFont(22f * TextScale * ImGuiHelpers.GlobalScale);
+	public static ImFontPtr TitleLarge => M3Fonts.GetFont(19f * TextScale * ImGuiHelpers.GlobalScale);
+	public static ImFontPtr TitleMedium => M3Fonts.GetFont(16f * TextScale * ImGuiHelpers.GlobalScale);
+	public static ImFontPtr LabelSmall => M3Fonts.GetFont(11f * TextScale * ImGuiHelpers.GlobalScale);
 
 	public static FontScope PushBody()
 	{
-		if (MathF.Abs(TextScale - 1f) < 0.005f)
+		if (_pushedBodyDepth == 0 && MathF.Abs(TextScale - 1f) < 0.005f)
 		{
 			return default;
 		}
 
 		ImGui.PushFont(Body);
-		return new FontScope(true);
+		_pushedBodyDepth++;
+		return new FontScope(true, true);
 	}
 
 	public static float FitText(float height, float padding)
@@ -223,14 +257,20 @@ public static class M3
 			return container;
 		}
 
-		var opacity = active ? StatePressed + StateHover : StateHover;
+		var opacity = active ? StatePressed : StateHover;
 		return Vector4.Lerp(container, content, opacity) with { W = container.W };
 	}
 
 	public static Vector4 ContentOn(Vector4 fill)
 	{
 		M3ColorMath.ToLch(fill, out var lightness, out _, out _);
-		return lightness > 60f ? Scheme.Surface : Scheme.OnSurface;
+		var scheme = Scheme;
+		if (scheme.IsLight)
+		{
+			return lightness > 60f ? scheme.OnSurface : scheme.Surface;
+		}
+
+		return lightness > 60f ? scheme.Surface : scheme.OnSurface;
 	}
 
 	public static uint U32(Vector4 color)
@@ -270,7 +310,9 @@ public static class M3
 		var source = harmonize ? Harmonize(color) : color;
 		M3ColorMath.ToLch(source, out _, out var chroma, out var hue);
 		var palette = new TonalPalette(hue, MathF.Max(chroma, 16f));
-		var roles = new M3ColorRoles(palette[80], palette[20], palette[30], palette[90]);
+		var roles = scheme.IsLight
+			? new M3ColorRoles(palette[40], palette[100], palette[90], palette[10])
+			: new M3ColorRoles(palette[80], palette[20], palette[30], palette[90]);
 		_customColors[(color, harmonize)] = roles;
 		return roles;
 	}
@@ -278,7 +320,7 @@ public static class M3
 	public static Vector4 AccentFor(int index)
 	{
 		var scheme = Scheme;
-		return (index % 3) switch
+		return (((index % 3) + 3) % 3) switch
 		{
 			0 => scheme.Primary,
 			1 => scheme.Tertiary,
@@ -319,7 +361,7 @@ public static class M3
 			M3Severity.Error => scheme.ErrorContainer,
 			M3Severity.Warning => scheme.WarningContainer,
 			M3Severity.Success => scheme.SuccessContainer,
-			M3Severity.Info => scheme.SecondaryContainer,
+			M3Severity.Info => scheme.InfoContainer,
 			_ => scheme.PrimaryContainer,
 		};
 	}
@@ -345,7 +387,7 @@ public static class M3
 			M3Severity.Error => scheme.OnErrorContainer,
 			M3Severity.Warning => scheme.OnWarningContainer,
 			M3Severity.Success => scheme.OnSuccessContainer,
-			M3Severity.Info => scheme.OnSecondaryContainer,
+			M3Severity.Info => scheme.OnInfoContainer,
 			_ => scheme.OnPrimaryContainer,
 		};
 	}
@@ -361,12 +403,17 @@ public static class M3
 		}
 	}
 
-	public readonly struct FontScope(bool pushed) : IDisposable
+	public readonly struct FontScope(bool pushed, bool body = false) : IDisposable
 	{
 		public void Dispose()
 		{
 			if (pushed)
 			{
+				if (body && _pushedBodyDepth > 0)
+				{
+					_pushedBodyDepth--;
+				}
+
 				ImGui.PopFont();
 			}
 		}

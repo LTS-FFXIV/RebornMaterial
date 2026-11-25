@@ -24,7 +24,7 @@ public static class M3Chart
 
 	public static Vector4 SeriesColor(int index)
 	{
-		return Palette[index];
+		return Palette[(((index % Palette.Length) + Palette.Length) % Palette.Length)];
 	}
 
 	public static void Bars(string id, IReadOnlyList<string> categories, IReadOnlyList<M3ChartSeries> series, Vector2 size, bool stacked = true,
@@ -91,7 +91,8 @@ public static class M3Chart
 						continue;
 					}
 
-					var start = bottom - (i > 0 && bottom < layout.Plot.Bottom ? gap : 0f);
+					var segmentGap = i > 0 && bottom < layout.Plot.Bottom && height > gap + 0.5f ? gap : 0f;
+					var start = bottom - segmentGap;
 					var end = bottom - height;
 					if (start - end > 0.5f)
 					{
@@ -142,7 +143,7 @@ public static class M3Chart
 			for (var p = 0; p < values.Count; p++)
 			{
 				var value = values[p];
-				if (!float.IsNaN(value))
+				if (float.IsFinite(value))
 				{
 					low = MathF.Min(low, value);
 					high = MathF.Max(high, value);
@@ -180,7 +181,7 @@ public static class M3Chart
 			for (var p = 0; p < count; p++)
 			{
 				var value = p < series[i].Values.Count ? series[i].Values[p] : float.NaN;
-				if (float.IsNaN(value))
+				if (!float.IsFinite(value))
 				{
 					drawing = StrokePath(drawList, drawing, last, color, scale);
 					continue;
@@ -206,7 +207,7 @@ public static class M3Chart
 		for (var i = 0; i < series.Count; i++)
 		{
 			var value = nearest < series[i].Values.Count ? series[i].Values[nearest] : float.NaN;
-			if (!float.IsNaN(value))
+			if (float.IsFinite(value))
 			{
 				var point = new Vector2(x, Y(value));
 				drawList.AddCircleFilled(point, 6f * scale, M3.U32(s.Surface), 16);
@@ -253,6 +254,11 @@ public static class M3Chart
 
 	public static string FormatValue(float value)
 	{
+		if (!float.IsFinite(value))
+		{
+			return "-";
+		}
+
 		var size = MathF.Abs(value);
 		return size >= 1_000_000f ? $"{value / 1_000_000f:0.#}M"
 			: size >= 10_000f ? $"{value / 1_000f:0.#}K"
@@ -278,11 +284,16 @@ public static class M3Chart
 	private static float ValueAt(in M3ChartSeries series, int index)
 	{
 		var value = index < series.Values.Count ? series.Values[index] : 0f;
-		return float.IsNaN(value) ? 0f : MathF.Max(0f, value);
+		return float.IsFinite(value) ? MathF.Max(0f, value) : 0f;
 	}
 
-	private static float NiceStep(float range, int ticks)
+	internal static float NiceStep(float range, int ticks)
 	{
+		if (!float.IsFinite(range) || range <= 0f)
+		{
+			return 1f;
+		}
+
 		var rough = range / MathF.Max(1, ticks);
 		var power = MathF.Pow(10f, MathF.Floor(MathF.Log10(rough)));
 		var fraction = rough / power;
@@ -403,7 +414,7 @@ public static class M3Chart
 				? count == 1 ? plot.Left + (plot.Width * 0.5f) : plot.Left + (spacing * i)
 				: plot.Left + (spacing * (i + 0.5f));
 			var size = ImGui.CalcTextSize(labels[i]);
-			var left = MathF.Max(plot.Left - (size.X * 0.5f), MathF.Min(x - (size.X * 0.5f), plot.Right - size.X));
+			var left = MathF.Max(plot.Left, MathF.Min(x - (size.X * 0.5f), plot.Right - size.X));
 			drawList.AddText(new Vector2(left, plot.Bottom + (4f * scale)), M3.U32(s.OnSurfaceVariant), labels[i]);
 		}
 	}
@@ -455,14 +466,15 @@ public static class M3Chart
 		var key = 12f * scale;
 		for (var i = 0; i < series.Count; i++)
 		{
-			var value = index < series[i].Values.Count ? series[i].Values[index] : float.NaN;
+			var raw = index < series[i].Values.Count ? series[i].Values[index] : float.NaN;
+			var value = lines ? raw : float.IsFinite(raw) ? MathF.Max(0f, raw) : float.NaN;
 			var origin = ImGui.GetCursorScreenPos();
 			ImGui.Dummy(new Vector2(key, lineHeight));
 			var middle = origin.Y + (lineHeight * 0.5f);
 			ImGui.GetWindowDrawList().AddLine(new Vector2(origin.X, middle), new Vector2(origin.X + key, middle), M3.U32(Palette[i]), (lines ? 2f : 4f) * scale);
 
 			ImGui.SameLine(0f, 6f * scale);
-			ImGui.TextUnformatted(float.IsNaN(value) ? "-" : format(value));
+			ImGui.TextUnformatted(!float.IsFinite(value) ? "-" : format(value));
 			if (series.Count > 1 || !string.IsNullOrEmpty(series[i].Name))
 			{
 				ImGui.SameLine(0f, 6f * scale);

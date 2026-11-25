@@ -35,6 +35,7 @@ public static class M3Tooltip
 		}
 
 		using var tooltip = ImRaii.Tooltip();
+		using var font = ImRaii.PushFont(M3.IsInitialized ? M3.Body : default, M3.IsInitialized);
 		using var wrap = ImRaii.TextWrapPos(ImGui.GetFontSize() * WrapEms);
 		ImGui.TextUnformatted(text);
 	}

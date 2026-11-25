@@ -4,29 +4,38 @@ namespace RebornMaterial;
 
 public static partial class M3Widgets
 {
-	private static readonly Dictionary<uint, int> _rangeThumb = [];
+	private static readonly M3FrameCache<int> _rangeThumb = new(64);
+	private static readonly M3FrameCache<int> _rangeFocusThumb = new(64);
+	private static uint _rangeNavActive;
 
 	private static void ResetRange()
 	{
 		_rangeThumb.Clear();
+		_rangeFocusThumb.Clear();
+		_rangeNavActive = 0;
 	}
 
 	public static bool RangeSlider(string id, ref float low, ref float high, float min, float max, float width, string format = "%.2f", bool enabled = true, float step = 0f, float minSpan = 0f, string? displayValue = null)
 	{
-		return RangeCore(id, ref low, ref high, min, max, width, format, false, enabled, step, minSpan, displayValue);
+		return RangeCore(id, ref low, ref high, min, max, width, format, false, enabled, step, minSpan, displayValue, true);
 	}
 
 	public static bool RangeSliderInt(string id, ref int low, ref int high, int min, int max, float width, bool enabled = true, int step = 0, int minSpan = 0, string? displayValue = null)
 	{
+		return RangeSliderIntCore(id, ref low, ref high, min, max, width, enabled, step, minSpan, displayValue, true);
+	}
+
+	private static bool RangeSliderIntCore(string id, ref int low, ref int high, int min, int max, float width, bool enabled, int step, int minSpan, string? displayValue, bool reserveReadout)
+	{
 		float lowValue = low;
 		float highValue = high;
-		if (!RangeCore(id, ref lowValue, ref highValue, min, max, width, string.Empty, true, enabled, step, minSpan, displayValue))
+		if (!RangeCore(id, ref lowValue, ref highValue, min, max, width, string.Empty, true, enabled, step, minSpan, displayValue, reserveReadout))
 		{
 			return false;
 		}
 
-		low = (int)lowValue;
-		high = (int)highValue;
+		low = (int)MathF.Round(lowValue);
+		high = (int)MathF.Round(highValue);
 		return true;
 	}
 
@@ -38,7 +47,7 @@ public static partial class M3Widgets
 
 		var row = M3SettingRow.Begin(display, supporting, controlSize, disabled: !enabled);
 		ImGui.SetCursorScreenPos(row.ControlPosition);
-		var changed = RangeCore(id, ref low, ref high, min, max, trackWidth, format, false, enabled, step, minSpan, null);
+		var changed = RangeCore(id, ref low, ref high, min, max, trackWidth, format, false, enabled, step, minSpan, null, false);
 		M3SettingRow.End(row);
 		return changed;
 	}
@@ -47,12 +56,12 @@ public static partial class M3Widgets
 	{
 		var (display, id) = RowParts(label, "_range");
 		var trackWidth = 150f * M3.Scale;
-		var gutter = MathF.Max(ImGui.CalcTextSize($"{min} - {min}").X, ImGui.CalcTextSize($"{max} - {max}").X) + (14f * M3.Scale);
+		var gutter = SliderIntGutter(min, max, true);
 		var controlSize = new Vector2(trackWidth + gutter, ButtonHeight);
 
 		var row = M3SettingRow.Begin(display, supporting, controlSize, disabled: !enabled);
 		ImGui.SetCursorScreenPos(row.ControlPosition);
-		var changed = RangeSliderInt(id, ref low, ref high, min, max, trackWidth, enabled, step, minSpan);
+		var changed = RangeSliderIntCore(id, ref low, ref high, min, max, trackWidth, enabled, step, minSpan, null, false);
 		M3SettingRow.End(row);
 		return changed;
 	}
@@ -79,7 +88,31 @@ public static partial class M3Widgets
 		return mouseX > highX || (mouseX == highX && lowAtMin) ? 1 : 0;
 	}
 
-	private static bool RangeCore(string id, ref float low, ref float high, float min, float max, float width, string format, bool integer, bool enabled, float step, float minSpan, string? displayValue)
+	private static float SnapRangeBound(float value, float min, float max, float step, bool integer, bool floorToLimit)
+	{
+		if (integer)
+		{
+			if (step > 1f)
+			{
+				var steps = (value - min) / step;
+				var index = floorToLimit ? MathF.Floor(steps) : MathF.Ceiling(steps);
+				return Math.Clamp(min + (index * step), min, max);
+			}
+
+			return Math.Clamp(floorToLimit ? MathF.Floor(value) : MathF.Ceiling(value), min, max);
+		}
+
+		if (step > 0f)
+		{
+			var steps = (value - min) / step;
+			var index = floorToLimit ? MathF.Floor(steps) : MathF.Ceiling(steps);
+			return Math.Clamp(min + (index * step), min, max);
+		}
+
+		return Math.Clamp(value, min, max);
+	}
+
+	private static bool RangeCore(string id, ref float low, ref float high, float min, float max, float width, string format, bool integer, bool enabled, float step, float minSpan, string? displayValue, bool reserveReadout)
 	{
 		var scale = M3.Scale;
 		var s = M3.Scheme;
@@ -90,12 +123,16 @@ public static partial class M3Widgets
 		}
 
 		minSpan = MathF.Max(minSpan, 0f);
-		var lo = Math.Clamp(MathF.Min(low, high), min, max);
-		var hi = Math.Clamp(MathF.Max(low, high), min, max);
+		var safeLow = float.IsFinite(low) ? low : min;
+		var safeHigh = float.IsFinite(high) ? high : max;
+		var lo = Math.Clamp(MathF.Min(safeLow, safeHigh), min, max);
+		var hi = Math.Clamp(MathF.Max(safeLow, safeHigh), min, max);
 
+		bool clicked;
+		using (ImRaii.PushStyle(ImGuiStyleVar.DisabledAlpha, 1f, !enabled))
 		using (ImRaii.Disabled(!enabled))
 		{
-			_ = ImGui.InvisibleButton(id, new Vector2(MathF.Max(width, 1f), height));
+			clicked = ImGui.InvisibleButton(id, new Vector2(MathF.Max(width, 1f), height));
 		}
 
 		var key = ImGuiP.GetItemID();
@@ -112,18 +149,57 @@ public static partial class M3Widgets
 		var lowX = RangeHandleX(lo, min, range, trackLeft, trackRight);
 		var highX = RangeHandleX(hi, min, range, trackLeft, trackRight);
 
-		if (enabled && ImGui.IsItemActivated())
+		if (enabled && ImGui.IsItemActivated() && ImGui.IsMouseDown(ImGuiMouseButton.Left))
 		{
-			_rangeThumb[key] = NearestThumb(mouseX, lowX, highX, lo <= min);
+			if (_rangeNavActive == key)
+			{
+				_rangeNavActive = 0;
+			}
+
+			var picked = NearestThumb(mouseX, lowX, highX, lo <= min);
+			_rangeThumb.Set(key, picked);
+			_rangeFocusThumb.Set(key, picked);
 		}
 
-		var active = enabled && ImGui.IsItemActive();
+		var focused = enabled && ImGui.IsItemFocused();
+		var enteredNavEdit = false;
+		if (enabled && focused && clicked && !ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+		{
+			if (_rangeNavActive == key)
+			{
+				_rangeNavActive = 0;
+				if (ImGuiP.GetActiveID() == key)
+				{
+					ImGuiP.ClearActiveID();
+				}
+			}
+			else
+			{
+				_rangeNavActive = key;
+				enteredNavEdit = true;
+				ImGuiP.SetActiveID(key, ImGuiP.GetCurrentWindow());
+			}
+		}
+
+		var currentActiveId = ImGuiP.GetActiveID();
+		if (_rangeNavActive == key && (!enabled || !focused || (currentActiveId != 0 && currentActiveId != key)))
+		{
+			_rangeNavActive = 0;
+		}
+		else if (_rangeNavActive == key && currentActiveId == 0)
+		{
+			ImGuiP.SetActiveID(key, ImGuiP.GetCurrentWindow());
+		}
+
+		var navEditing = enabled && _rangeNavActive == key;
+		var active = enabled && (navEditing || ImGui.IsItemActive());
 		var activeThumb = !active ? -1
-			: _rangeThumb.TryGetValue(key, out var stored) ? stored
+			: navEditing ? (_rangeFocusThumb.TryGet(key, out var navThumb) ? navThumb : 0)
+			: _rangeThumb.TryGet(key, out var stored) ? stored
 			: NearestThumb(mouseX, lowX, highX, lo <= min);
 		var changed = false;
 
-		if (active && ImGui.IsMouseDown(ImGuiMouseButton.Left))
+		if (active && ImGui.IsMouseDown(ImGuiMouseButton.Left) && !navEditing)
 		{
 			var fraction = Math.Clamp((mouseX - trackLeft) / MathF.Max(trackRight - trackLeft, 1f), 0f, 1f);
 			var v = min + (fraction * range);
@@ -138,7 +214,8 @@ public static partial class M3Widgets
 
 			if (activeThumb == 0)
 			{
-				v = MathF.Max(MathF.Min(v, hi - minSpan), min);
+				var limit = SnapRangeBound(hi - minSpan, min, max, step, integer, true);
+				v = MathF.Max(MathF.Min(v, limit), min);
 				if (v != lo)
 				{
 					lo = v;
@@ -147,30 +224,103 @@ public static partial class M3Widgets
 			}
 			else
 			{
-				v = MathF.Min(MathF.Max(v, lo + minSpan), max);
+				var limit = SnapRangeBound(lo + minSpan, min, max, step, integer, false);
+				v = MathF.Min(MathF.Max(v, limit), max);
 				if (v != hi)
 				{
 					hi = v;
 					changed = true;
 				}
 			}
+		}
+		else if (navEditing)
+		{
+			ImGuiP.SetActiveIdUsingNavAndKeys();
+			M3.CaptureEscape();
 
-			if (changed)
+			if (!enteredNavEdit && (ImGui.IsKeyPressed(ImGuiKey.Escape)
+				|| ImGui.IsKeyPressed(ImGuiKey.Enter)
+				|| ImGui.IsKeyPressed(ImGuiKey.KeypadEnter)
+				|| ImGui.IsKeyPressed(ImGuiKey.Space)
+				|| ImGui.IsKeyPressed(ImGuiKey.GamepadFaceDown)
+				|| ImGui.IsKeyPressed(ImGuiKey.GamepadFaceRight)))
 			{
-				low = lo;
-				high = hi;
-				lowX = RangeHandleX(lo, min, range, trackLeft, trackRight);
-				highX = RangeHandleX(hi, min, range, trackLeft, trackRight);
+				_rangeNavActive = 0;
+				ImGuiP.ClearActiveID();
+			}
+			else
+			{
+				_ = _rangeFocusThumb.TryGet(key, out var focusThumb);
+				if (ImGui.IsKeyPressed(ImGuiKey.UpArrow)
+					|| ImGui.IsKeyPressed(ImGuiKey.DownArrow)
+					|| ImGui.IsKeyPressed(ImGuiKey.GamepadDpadUp)
+					|| ImGui.IsKeyPressed(ImGuiKey.GamepadDpadDown))
+				{
+					focusThumb = focusThumb == 0 ? 1 : 0;
+					_rangeFocusThumb.Set(key, focusThumb);
+				}
+
+				var deltaDir = ImGui.IsKeyPressed(ImGuiKey.LeftArrow) || ImGui.IsKeyPressed(ImGuiKey.GamepadDpadLeft) ? -1
+					: ImGui.IsKeyPressed(ImGuiKey.RightArrow) || ImGui.IsKeyPressed(ImGuiKey.GamepadDpadRight) ? 1
+					: 0;
+				if (deltaDir != 0 && range > 0f)
+				{
+					var nudge = step > 0f ? step : integer ? 1f : range * 0.05f;
+					if (focusThumb == 0)
+					{
+						var next = lo + (deltaDir * nudge);
+						if (integer)
+						{
+							next = step > 1f ? Snap((long)MathF.Round(next), (int)min, (int)max, (int)step) : MathF.Round(next);
+						}
+						else if (step > 0f)
+						{
+							next = Snap(next, min, max, step);
+						}
+
+						var limit = SnapRangeBound(hi - minSpan, min, max, step, integer, true);
+						next = MathF.Max(MathF.Min(next, limit), min);
+						if (next != lo)
+						{
+							lo = next;
+							changed = true;
+						}
+					}
+					else
+					{
+						var next = hi + (deltaDir * nudge);
+						if (integer)
+						{
+							next = step > 1f ? Snap((long)MathF.Round(next), (int)min, (int)max, (int)step) : MathF.Round(next);
+						}
+						else if (step > 0f)
+						{
+							next = Snap(next, min, max, step);
+						}
+
+						var limit = SnapRangeBound(lo + minSpan, min, max, step, integer, false);
+						next = MathF.Min(MathF.Max(next, limit), max);
+						if (next != hi)
+						{
+							hi = next;
+							changed = true;
+						}
+					}
+				}
 			}
 		}
 
-		if (ImGui.IsItemDeactivated())
+		if (changed)
 		{
-			_ = _rangeThumb.Remove(key);
+			low = lo;
+			high = hi;
+			lowX = RangeHandleX(lo, min, range, trackLeft, trackRight);
+			highX = RangeHandleX(hi, min, range, trackLeft, trackRight);
 		}
 
 		var hoveredThumb = active ? activeThumb
-			: enabled && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem) ? NearestThumb(mouseX, lowX, highX, lo <= min)
+			: IsHovered(enabled) ? NearestThumb(mouseX, lowX, highX, lo <= min)
+			: focused && ImGui.GetIO().NavVisible ? (_rangeFocusThumb.TryGet(key, out var focusedIndex) ? focusedIndex : 0)
 			: -1;
 
 		var drawList = ImGui.GetWindowDrawList();
@@ -211,40 +361,29 @@ public static partial class M3Widgets
 
 		var readoutColor = M3.U32(s.OnSurfaceVariant, enabled ? 1f : M3.DisabledContent);
 		var readoutX = itemMax.X + (10f * scale);
-		if (displayValue != null)
-		{
-			var size = ImGui.CalcTextSize(displayValue);
-			drawList.AddText(new Vector2(readoutX, centerY - (size.Y * 0.5f)), readoutColor, displayValue);
-		}
-		else if (integer)
-		{
-			var size = ImGui.CalcTextSize($"{(int)lo} - {(int)hi}");
-			drawList.AddText(new Vector2(readoutX, centerY - (size.Y * 0.5f)), readoutColor, $"{(int)lo} - {(int)hi}");
-		}
-		else
-		{
-			var text = SliderReadout(key, format, lo, hi, true);
-			var size = ImGui.CalcTextSize(text);
-			drawList.AddText(new Vector2(readoutX, centerY - (size.Y * 0.5f)), readoutColor, text);
-		}
+		var readout = displayValue ?? (integer ? SliderIntReadout(key, (int)MathF.Round(lo), (int)MathF.Round(hi), true) : SliderReadout(key, format, lo, hi, true));
+		var readoutSize = ImGui.CalcTextSize(readout);
+		drawList.AddText(new Vector2(readoutX, centerY - (readoutSize.Y * 0.5f)), readoutColor, readout);
 
 		if (active)
 		{
 			var value = activeThumb == 0 ? lo : hi;
-			var bubble = integer ? null : FormatValue(format, value);
-			var textSize = bubble != null ? ImGui.CalcTextSize(bubble) : ImGui.CalcTextSize($"{(int)value}");
+			var bubble = integer ? SliderReadout(key ^ (activeThumb == 0 ? 1u : 2u), (int)MathF.Round(value)) : FormatValue(format, value);
+			var textSize = ImGui.CalcTextSize(bubble);
 			var padding = new Vector2(8f, 4f) * scale;
 			var bubbleMin = new Vector2(topCenter.X - (textSize.X * 0.5f) - padding.X, itemMin.Y - textSize.Y - (padding.Y * 2f) - (6f * scale));
 			var bubbleMax = bubbleMin + textSize + (padding * 2f);
-			drawList.AddRectFilled(bubbleMin, bubbleMax, M3.U32(s.InverseSurface), M3.ShapeSmall);
-			if (bubble != null)
-			{
-				drawList.AddText(bubbleMin + padding, M3.U32(s.InverseOnSurface), bubble);
-			}
-			else
-			{
-				drawList.AddText(bubbleMin + padding, M3.U32(s.InverseOnSurface), $"{(int)value}");
-			}
+			var foreground = ImGui.GetForegroundDrawList();
+			foreground.AddRectFilled(bubbleMin, bubbleMax, M3.U32(s.InverseSurface), M3.ShapeSmall);
+			foreground.AddText(bubbleMin + padding, M3.U32(s.InverseOnSurface), bubble);
+		}
+
+		if (reserveReadout && !string.IsNullOrEmpty(readout))
+		{
+			var gutter = displayValue != null ? SliderValueGutter(readout)
+				: integer ? SliderIntGutter((int)min, (int)max, true)
+				: SliderGutter(format, min, max, true);
+			ReserveReadoutSpace(itemMax.X + gutter);
 		}
 
 		return changed;

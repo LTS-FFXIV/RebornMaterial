@@ -343,6 +343,12 @@ public static class M3Gallery
 			M3.Settings.UiMotionScale = motion / 100f;
 		}
 
+		var lightTheme = M3.Settings.UiLightTheme;
+		if (M3Widgets.RowSwitch("Light theme###gallery_light_theme", ref lightTheme, "Switches the derived colour scheme between dark and light tokens."))
+		{
+			M3.Settings.UiLightTheme = lightTheme;
+		}
+
 		var swatch = 28f * scale;
 		var resetWidth = M3Widgets.ButtonWidth(FontAwesomeIcon.None, "Reset");
 		var seedRow = M3SettingRow.Begin("Accent seed", "The saved interface accent colour. The whole scheme is derived from it.",
@@ -1183,9 +1189,6 @@ public static class M3Gallery
 
 		Heading("Range sliders", isNew: true);
 		_ = M3Widgets.RangeSlider("##gallery_range", ref _rangeLow, ref _rangeHigh, 0f, 100f, track, "%.0f%%", step: 1f);
-
-		ImGui.SameLine(0f, 0f);
-		ImGui.Dummy(new Vector2(M3Widgets.SliderValueGutter("100% - 100%"), ImGui.GetItemRectSize().Y));
 		Beside("Two thumbs that can't cross. Grab the nearest end.");
 		_ = M3Widgets.RowRange("Engage distance###gallery_row_range", ref _rowRangeLow, ref _rowRangeHigh, 0f, 30f, "%.1f y",
 			"Keeps at least 1 y between the ends.", minSpan: 1f);

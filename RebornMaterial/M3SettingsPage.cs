@@ -46,6 +46,21 @@ public sealed class M3SettingsPage(string id, string label, FontAwesomeIcon icon
 		var accent = 0;
 		foreach (var group in Groups)
 		{
+			var anyVisible = false;
+			foreach (var entry in group.Entries)
+			{
+				if (entry.IsVisible)
+				{
+					anyVisible = true;
+					break;
+				}
+			}
+
+			if (!anyVisible)
+			{
+				continue;
+			}
+
 			using var card = M3Card.Begin($"settings_{Id}_{group.Id}", group.Title, group.Icon, M3.AccentFor(accent++), M3CardStyle.Filled, group.Subtitle);
 			foreach (var entry in group.Entries)
 			{
@@ -104,6 +119,11 @@ public static class M3SettingsSearch
 				M3SettingsSearchResult? result = null;
 				foreach (var entry in group.Entries)
 				{
+					if (!entry.IsVisible)
+					{
+						continue;
+					}
+
 					if (whole || entry.Matches(text))
 					{
 						result ??= new M3SettingsSearchResult(page, group, whole);

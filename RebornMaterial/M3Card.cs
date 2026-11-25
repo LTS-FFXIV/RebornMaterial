@@ -31,6 +31,7 @@ public static class M3CardHost
 	public static void Reset()
 	{
 		_measuredHeights.Clear();
+		M3Card.ResetDepth();
 	}
 }
 
@@ -45,6 +46,31 @@ public enum M3CardStyle
 
 public static class M3Card
 {
+	internal static int Depth { get; private set; }
+
+	internal static void Enter()
+	{
+		Depth++;
+	}
+
+	internal static void Leave()
+	{
+		if (Depth > 0)
+		{
+			Depth--;
+		}
+	}
+
+	internal static void ResetDepth()
+	{
+		Depth = 0;
+	}
+
+	internal static void RestoreDepth(int depth)
+	{
+		Depth = Math.Max(0, depth);
+	}
+
 	public static float ContentInset => M3Style.Spacing(16f, 10f);
 	public static float RightInset => M3Style.Spacing(16f, 10f);
 	public static float TopPadding => M3Style.Spacing(14f, 8f);
@@ -61,17 +87,26 @@ public static class M3Card
 		var min = ImGui.GetCursorScreenPos();
 		var width = MathF.Max(64f * scale, ImGui.GetContentRegionAvail().X);
 		var cursorY = min.Y + TopPadding;
+		var drawList = ImGui.GetWindowDrawList();
+		var split = Depth == 0 && drawList.Splitter.Count <= 1;
 
-		var previous = M3CardHost.PreviousHeight(key);
-		if (previous > 0f)
+		if (split)
 		{
-			var max = new Vector2(min.X + width, min.Y + previous);
-			Paint(ImGui.GetWindowDrawList(), min, max, tone, style, M3Draw.MouseOver(min, max, true));
+			drawList.ChannelsSplit(2);
+			drawList.ChannelsSetCurrent(1);
+		}
+		else
+		{
+			var previous = M3CardHost.PreviousHeight(key);
+			if (previous > 0f)
+			{
+				var max = new Vector2(min.X + width, min.Y + previous);
+				Paint(drawList, min, max, tone, style, M3Draw.MouseOver(min, max, true));
+			}
 		}
 
 		if (!string.IsNullOrEmpty(title))
 		{
-			var drawList = ImGui.GetWindowDrawList();
 			var textX = min.X + ContentInset;
 
 			if (icon != FontAwesomeIcon.None)
@@ -80,15 +115,22 @@ public static class M3Card
 				textX += M3Draw.MeasureIcon(icon).X + (10f * scale);
 			}
 
-			float titleHeight;
+			var titleRoom = MathF.Max(24f * scale, min.X + width - RightInset - textX);
+			string shownTitle;
+			Vector2 titleSize;
 			using (ImRaii.PushFont(M3.TitleMedium))
 			{
-				var titleSize = ImGui.CalcTextSize(title);
-				drawList.AddText(new Vector2(textX, cursorY), M3.U32(M3.Scheme.OnSurface, 0.98f), title);
-				titleHeight = titleSize.Y;
+				shownTitle = M3Navigation.Truncate(title, titleRoom);
+				titleSize = ImGui.CalcTextSize(shownTitle);
+				drawList.AddText(new Vector2(textX, cursorY), M3.U32(M3.Scheme.OnSurface, 0.98f), shownTitle);
 			}
 
-			cursorY += titleHeight + (4f * scale);
+			if (shownTitle != title && M3Draw.MouseOver(new Vector2(textX, cursorY), new Vector2(textX + titleSize.X, cursorY + titleSize.Y)))
+			{
+				M3Tooltip.Show(title);
+			}
+
+			cursorY += titleSize.Y + (4f * scale);
 
 			if (!string.IsNullOrEmpty(subtitle))
 			{
@@ -109,7 +151,8 @@ public static class M3Card
 
 		PushContentWrap(min.X + width);
 		ImGui.SetCursorScreenPos(new Vector2(min.X + inset, cursorY));
-		return new Scope(key, min, width, inset);
+		Enter();
+		return new Scope(key, min, width, inset, drawList, tone, style, split);
 	}
 
 	public static void PushContentWrap(float cardRightScreenX)
@@ -146,7 +189,7 @@ public static class M3Card
 			M3Draw.ResolveFade(80f, 0.35f, railBottom - railTop));
 	}
 
-	public readonly struct Scope(uint id, Vector2 min, float width, float indent) : IDisposable
+	public readonly struct Scope(uint id, Vector2 min, float width, float indent, ImDrawListPtr drawList, Vector4 accent, M3CardStyle style, bool split) : IDisposable
 	{
 		public void Dispose()
 		{
@@ -154,6 +197,8 @@ public static class M3Card
 			{
 				return;
 			}
+
+			Leave();
 
 			var scale = M3.Scale;
 			var contentBottom = ImGui.GetCursorScreenPos().Y;
@@ -166,6 +211,14 @@ public static class M3Card
 
 			var bottom = MathF.Max(contentBottom + BottomPadding, min.Y + (40f * scale));
 			M3CardHost.RecordHeight(id, bottom - min.Y);
+
+			if (split)
+			{
+				var max = new Vector2(min.X + width, bottom);
+				drawList.ChannelsSetCurrent(0);
+				Paint(drawList, min, max, accent, style, M3Draw.MouseOver(min, max, true));
+				drawList.ChannelsMerge();
+			}
 
 			ImGui.SetCursorScreenPos(new Vector2(min.X, bottom + Margin));
 			ImGui.Dummy(new Vector2(width, 0f));
@@ -185,13 +238,31 @@ public static class M3ExpandableCard
 		var min = ImGui.GetCursorScreenPos();
 		var width = MathF.Max(64f * scale, ImGui.GetContentRegionAvail().X);
 		var headerHeight = M3Style.Density == M3Density.Tight ? M3.FitText(36f, 8f) : M3.FitText(48f, 12f);
+		var drawList = ImGui.GetWindowDrawList();
+		var split = M3Card.Depth == 0 && drawList.Splitter.Count <= 1;
 
-		var previousHeight = MathF.Max(M3CardHost.PreviousHeight(key), headerHeight);
-		Paint(ImGui.GetWindowDrawList(), min, new Vector2(min.X + width, min.Y + previousHeight), tone, expanded);
+		bool toggled;
+		uint chevronId;
+		using (ImRaii.PushId(id))
+		{
+			toggled = ImGui.InvisibleButton("##header", new Vector2(width, headerHeight));
+			chevronId = ImGui.GetID("##chevron");
+		}
 
-		if (ImGui.InvisibleButton($"{id}_header", new Vector2(width, headerHeight)))
+		if (toggled)
 		{
 			expanded = !expanded;
+		}
+
+		if (split)
+		{
+			drawList.ChannelsSplit(2);
+			drawList.ChannelsSetCurrent(1);
+		}
+		else
+		{
+			var previousHeight = MathF.Max(M3CardHost.PreviousHeight(key), headerHeight);
+			Paint(drawList, min, new Vector2(min.X + width, min.Y + previousHeight), tone, expanded);
 		}
 
 		var hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
@@ -201,8 +272,7 @@ public static class M3ExpandableCard
 			ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
 		}
 
-		var drawList = ImGui.GetWindowDrawList();
-		var progress = M3Motion.Approach(ImGui.GetID($"{id}_chevron"), expanded ? 1f : 0f, M3Motion.EmphasisedDuration);
+		var progress = M3Motion.Approach(chevronId, expanded ? 1f : 0f, M3Motion.EmphasisedDuration);
 
 		if (hovered || held)
 		{
@@ -263,7 +333,7 @@ public static class M3ExpandableCard
 				M3.U32(s.OnSurfaceVariant, 0.85f), trailing);
 		}
 
-		DrawChevron(drawList, chevronCenter, progress, M3.Alpha(s.OnSurfaceVariant, hovered ? 1f : 0.8f));
+		M3Draw.Chevron(drawList, chevronCenter, progress, M3.Alpha(s.OnSurfaceVariant, hovered ? 1f : 0.8f), 5f * scale, 2f * scale);
 		M3Draw.FocusRing(min, new Vector2(min.X + width, min.Y + headerHeight), M3.ShapeMedium);
 
 		var indent = 0f;
@@ -284,34 +354,14 @@ public static class M3ExpandableCard
 
 			ImGui.SetCursorScreenPos(new Vector2(min.X + indent, min.Y + headerHeight));
 			ImGui.Dummy(new Vector2(0f, M3Card.Gap));
+			M3Card.Enter();
 		}
 		else
 		{
 			ImGui.SetCursorScreenPos(new Vector2(min.X, min.Y + headerHeight));
 		}
 
-		return new Scope(key, min, width, indent, expanded);
-	}
-
-	private static void DrawChevron(ImDrawListPtr drawList, Vector2 center, float progress, Vector4 color)
-	{
-		var scale = M3.Scale;
-		var arm = 5f * scale;
-		var angle = float.Lerp(0f, MathF.PI * 0.5f, progress);
-		var cos = MathF.Cos(angle);
-		var sin = MathF.Sin(angle);
-
-		Vector2 Rotate(Vector2 point)
-		{
-			return center + new Vector2((point.X * cos) - (point.Y * sin), (point.X * sin) + (point.Y * cos));
-		}
-
-		var left = Rotate(new Vector2(-arm, -arm * 0.6f));
-		var tip = Rotate(new Vector2(0f, arm * 0.6f));
-		var right = Rotate(new Vector2(arm, -arm * 0.6f));
-
-		drawList.AddLine(left, tip, M3.U32(color), 2f * scale);
-		drawList.AddLine(tip, right, M3.U32(color), 2f * scale);
+		return new Scope(key, min, width, indent, expanded, drawList, tone, split);
 	}
 
 	private static void Paint(ImDrawListPtr drawList, Vector2 min, Vector2 max, Vector4 accent, bool expanded)
@@ -336,7 +386,7 @@ public static class M3ExpandableCard
 		}
 	}
 
-	public readonly struct Scope(uint id, Vector2 min, float width, float indent, bool expanded) : IDisposable
+	public readonly struct Scope(uint id, Vector2 min, float width, float indent, bool expanded, ImDrawListPtr drawList, Vector4 accent, bool split) : IDisposable
 	{
 		public bool Expanded => expanded;
 
@@ -351,6 +401,7 @@ public static class M3ExpandableCard
 
 			if (expanded)
 			{
+				M3Card.Leave();
 				ImGui.PopTextWrapPos();
 			}
 
@@ -361,6 +412,13 @@ public static class M3ExpandableCard
 
 			var bottom = contentBottom + (expanded ? M3Card.BottomPadding : 0f);
 			M3CardHost.RecordHeight(id, bottom - min.Y);
+
+			if (split)
+			{
+				drawList.ChannelsSetCurrent(0);
+				Paint(drawList, min, new Vector2(min.X + width, bottom), accent, expanded);
+				drawList.ChannelsMerge();
+			}
 
 			ImGui.SetCursorScreenPos(new Vector2(min.X, bottom + M3Card.Margin));
 			ImGui.Dummy(new Vector2(width, 0f));
